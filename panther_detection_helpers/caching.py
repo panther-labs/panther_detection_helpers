@@ -80,13 +80,12 @@ def increment_counter(key: str, val: int = 1, epoch_seconds: Optional[int] = Non
     Returns:
         The new value of the count
     """
-    epoch_seconds = _finalize_epoch_seconds(epoch_seconds)
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
         UpdateExpression="ADD #col :incr SET #ttlcol = :time",
         ExpressionAttributeNames={"#col": _COUNT_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={":incr": val, ":time": epoch_seconds},
+        ExpressionAttributeValues={":incr": val, ":time": _finalize_epoch_seconds(epoch_seconds)},
     )
 
     # Numeric values are returned as decimal.Decimal
@@ -112,12 +111,11 @@ def set_key_expiration(key: str, epoch_seconds: Optional[int]) -> None:
         epoch_seconds: (Optional) How long until the counter expires in seconds.
                        Default: 90 days from now (set to 0 to disable)
     """
-    epoch_seconds = _finalize_epoch_seconds(epoch_seconds)
     kv_table().update_item(
         Key={"key": key},
         UpdateExpression="SET #ttlcol = :time",
         ExpressionAttributeNames={"#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={":time": epoch_seconds},
+        ExpressionAttributeValues={":time": _finalize_epoch_seconds(epoch_seconds)},
     )
 
 
@@ -162,9 +160,8 @@ def put_dictionary(key: str, val: dict, epoch_seconds: Optional[int] = None) -> 
             "value is a dictionary, but it is not JSON serializable"
         ) from exc
 
-    epoch_seconds = _finalize_epoch_seconds(epoch_seconds)
     # Store the item in DynamoDB
-    kv_table().put_item(Item={"key": key, _DICT_COL: data, _TTL_COL: epoch_seconds})
+    kv_table().put_item(Item={"key": key, _DICT_COL: data, _TTL_COL: _finalize_epoch_seconds(epoch_seconds)})
 
 
 def get_dictionary(key: str, force_ttl_check: bool = False) -> dict:
@@ -233,8 +230,7 @@ def put_string_set(key: str, val: Sequence[str], epoch_seconds: Optional[int] = 
         # Can't put an empty string set - remove it instead
         reset_string_set(key)
     else:
-        epoch_seconds = _finalize_epoch_seconds(epoch_seconds)
-        kv_table().put_item(Item={"key": key, _STRING_SET_COL: set(val), _TTL_COL: epoch_seconds})
+        kv_table().put_item(Item={"key": key, _STRING_SET_COL: set(val), _TTL_COL: _finalize_epoch_seconds(epoch_seconds)})
 
 
 def add_to_string_set(
@@ -258,13 +254,12 @@ def add_to_string_set(
             # We can't add empty sets, just return the existing value instead
             return get_string_set(key)
 
-    epoch_seconds = _finalize_epoch_seconds(epoch_seconds)
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
         UpdateExpression="ADD #col :ss SET #ttlcol = :time",
         ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={":ss": item_value, ":time": epoch_seconds},
+        ExpressionAttributeValues={":ss": item_value, ":time": _finalize_epoch_seconds(epoch_seconds)},
     )
 
     current_string_set = response["Attributes"].get(_STRING_SET_COL, None)
@@ -294,13 +289,12 @@ def remove_from_string_set(
             # We can't remove empty sets, just return the existing value instead
             return get_string_set(key)
 
-    epoch_seconds = _finalize_epoch_seconds(epoch_seconds)
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
         UpdateExpression="DELETE #col :ss SET #ttlcol = :time",
         ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={":ss": item_value, ":time": epoch_seconds},
+        ExpressionAttributeValues={":ss": item_value, ":time": _finalize_epoch_seconds(epoch_seconds)},
     )
 
     return response["Attributes"][_STRING_SET_COL]
