@@ -161,7 +161,9 @@ def put_dictionary(key: str, val: dict, epoch_seconds: Optional[int] = None) -> 
         ) from exc
 
     # Store the item in DynamoDB
-    kv_table().put_item(Item={"key": key, _DICT_COL: data, _TTL_COL: _finalize_epoch_seconds(epoch_seconds)})
+    kv_table().put_item(
+        Item={"key": key, _DICT_COL: data, _TTL_COL: _finalize_epoch_seconds(epoch_seconds)}
+    )
 
 
 def get_dictionary(key: str, force_ttl_check: bool = False) -> dict:
@@ -230,7 +232,13 @@ def put_string_set(key: str, val: Sequence[str], epoch_seconds: Optional[int] = 
         # Can't put an empty string set - remove it instead
         reset_string_set(key)
     else:
-        kv_table().put_item(Item={"key": key, _STRING_SET_COL: set(val), _TTL_COL: _finalize_epoch_seconds(epoch_seconds)})
+        kv_table().put_item(
+            Item={
+                "key": key,
+                _STRING_SET_COL: set(val),
+                _TTL_COL: _finalize_epoch_seconds(epoch_seconds),
+            }
+        )
 
 
 def add_to_string_set(
@@ -259,7 +267,10 @@ def add_to_string_set(
         ReturnValues="UPDATED_NEW",
         UpdateExpression="ADD #col :ss SET #ttlcol = :time",
         ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={":ss": item_value, ":time": _finalize_epoch_seconds(epoch_seconds)},
+        ExpressionAttributeValues={
+            ":ss": item_value,
+            ":time": _finalize_epoch_seconds(epoch_seconds),
+        },
     )
 
     current_string_set = response["Attributes"].get(_STRING_SET_COL, None)
@@ -294,7 +305,10 @@ def remove_from_string_set(
         ReturnValues="UPDATED_NEW",
         UpdateExpression="DELETE #col :ss SET #ttlcol = :time",
         ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={":ss": item_value, ":time": _finalize_epoch_seconds(epoch_seconds)},
+        ExpressionAttributeValues={
+            ":ss": item_value,
+            ":time": _finalize_epoch_seconds(epoch_seconds),
+        },
     )
 
     return response["Attributes"][_STRING_SET_COL]
