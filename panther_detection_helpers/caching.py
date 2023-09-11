@@ -109,7 +109,7 @@ def set_key_expiration(key: str, epoch_seconds: Optional[int]) -> None:
 
     Args:
         key: The name of the counter
-        epoch_seconds: (Optional) How long until the counter expires in seconds. 
+        epoch_seconds: (Optional) How long until the counter expires in seconds.
                        Default: 90 days from now (set to 0 to disable)
     """
     epoch_seconds = _finalize_epoch_seconds(epoch_seconds)
