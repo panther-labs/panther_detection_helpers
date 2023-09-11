@@ -121,7 +121,7 @@ def set_key_expiration(key: str, epoch_seconds: Optional[int]) -> None:
     )
 
 
-def _finalize_epoch_seconds(epoch_seconds):
+def _finalize_epoch_seconds(epoch_seconds: Optional[int]) -> int:
     if isinstance(epoch_seconds, str):
         epoch_seconds = float(epoch_seconds)
     if isinstance(epoch_seconds, float):
