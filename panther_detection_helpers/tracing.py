@@ -23,10 +23,10 @@ logging.info("USE_METRICS = %s", USE_METRICS)
 # pylint: disable=too-many-arguments
 def trace(
     name: str,
+    measured: bool = False,
     service: Optional[str] = None,
     resource: Optional[str] = None,
     span_type: Optional[str] = None,
-    measured: bool = False,
     tags: Optional[Dict[Union[str, bytes], str]] = None,
 ) -> Span:
     """
@@ -91,10 +91,10 @@ def finish_span(
 # pylint: disable=too-many-arguments
 def wrap(
     name: str,
+    measured: bool = False,
     service: Optional[str] = None,
     resource: Optional[str] = None,
     span_type: Optional[str] = None,
-    measured: bool = False,
     tags: Optional[Dict[Union[bytes, str], str]] = None,
 ) -> Callable[..., Any]:
     """
