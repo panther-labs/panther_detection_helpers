@@ -6,7 +6,8 @@ deps:
 
 deps-update:
 	pipenv update
-	pipenv lock -r  > requirements.txt
+	pipenv lock
+	pipenv requirements > requirements.txt
 
 lint:
 	pipenv run mypy $(packages) --disallow-untyped-defs --ignore-missing-imports --warn-unused-ignores
@@ -19,7 +20,7 @@ fmt:
 
 install:
 	pipenv install --dev
-	pipenv requirements  > requirements.txt
+	pipenv requirements > requirements.txt
 
 install-pipenv:
 	pip install pipenv
