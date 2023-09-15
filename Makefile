@@ -27,6 +27,7 @@ install-pipenv:
 package-clean:
 	rm -rf dist
 	rm -f MANIFEST
+	rm -rf *.egg-info
 
 package: package-clean install test lint
 	pipenv run python3 setup.py sdist

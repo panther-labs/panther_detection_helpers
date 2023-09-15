@@ -71,7 +71,7 @@ def finish_span(
         ...
         finish_span(span, error_message="my_error_message", error_type="network_error", error_stack=some_stack_trace)
     """
-    error_tags: Dict[Union[str, bytes], str] = {}
+    error_tags = {}
     if error_message:
         error_tags[ERROR_MESSAGE_TAG] = error_message
     if error_type:
