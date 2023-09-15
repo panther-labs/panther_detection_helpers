@@ -14,10 +14,10 @@ ERROR_MESSAGE_TAG = "error.message"
 ERROR_TYPE_TAG = "error.type"
 ERROR_STACK_TAG = "error.stack"
 
-USE_METRICS = os.getenv("DD_ENV", "").lower() in ["prod", "dev"] and bool(
-    os.getenv("DD_TRACING_ENABLED", "")
+USE_MONITORING = os.getenv("DD_ENV", "").lower() in ["prod", "dev"] and bool(
+    os.getenv("DD_TRACING_ENABLED", "") and os.getenv("USE_DETECTION_HELPER_MONITORING")
 )
-logging.info("USE_METRICS = %s", USE_METRICS)
+logging.info("panther_detection_helpers.tracing SE_MONITORING = %s", USE_MONITORING)
 
 
 # pylint: disable=too-many-arguments
@@ -150,4 +150,4 @@ def wrap(
 
         return func_wrapper
 
-    return dd_wrap_decorator if USE_METRICS else plain_wrap_decorator
+    return dd_wrap_decorator if USE_MONITORING else plain_wrap_decorator
