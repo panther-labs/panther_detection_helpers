@@ -119,3 +119,7 @@ class TestCaching(unittest.TestCase):
         # Reset the stringset
         caching.reset_string_set("strs")
         self.assertEqual(caching.get_string_set("strs"), set())
+
+    def test_monitoring_does_not_explode(self) -> None:
+        caching.monitoring.USE_MONITORING = True
+        self.assertEqual(caching.get_string_set("strs"), {"a", "b"})

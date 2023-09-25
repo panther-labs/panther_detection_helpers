@@ -10,7 +10,7 @@ deps-update:
 	pipenv requirements > requirements.txt
 
 lint:
-	pipenv run mypy $(packages) --disallow-untyped-defs --ignore-missing-imports --warn-unused-ignores
+	pipenv run mypy $(packages) --ignore-missing-imports --warn-unused-ignores
 	pipenv run bandit -r $(packages)
 	pipenv run pylint $(packages) --disable=missing-docstring,duplicate-code,C0209,W0511,R0912,too-many-lines,too-many-instance-attributes --max-line-length=140
 

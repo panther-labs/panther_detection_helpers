@@ -6,7 +6,7 @@ from typing import Any, Mapping, Optional, Sequence, Set, Union
 
 import boto3
 
-from panther_detection_helpers import tracing
+from . import monitoring
 
 # Helper functions for accessing Dynamo key-value store.
 #
@@ -37,9 +37,9 @@ def kv_table() -> boto3.resource:
     return _KV_TABLE
 
 
-@tracing.wrap(
-    name="panther_detection_helpers.caching.get_string_set",
-    resource="get_string_set",
+@monitoring.wrap(
+    name="panther_detection_helpers.caching.ttl_expired",
+    resource="ttl_expired",
     measured=True,
 )
 def ttl_expired(response: dict) -> bool:
@@ -49,7 +49,7 @@ def ttl_expired(response: dict) -> bool:
     return expiration and float(expiration) <= (datetime.now()).timestamp()
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.get_counter",
     resource="get_counter",
     measured=True,
@@ -65,7 +65,7 @@ def get_counter(key: str, force_ttl_check: bool = False) -> int:
     return response.get("Item", {}).get(_COUNT_COL, 0)
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.increment_counter",
     resource="increment_counter",
     measured=True,
@@ -92,7 +92,7 @@ def increment_counter(key: str, val: int = 1) -> int:
     return response["Attributes"][_COUNT_COL].to_integral_value()
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.reset_counter",
     resource="reset_counter",
     measured=True,
@@ -102,7 +102,7 @@ def reset_counter(key: str) -> None:
     kv_table().put_item(Item={"key": key, _COUNT_COL: 0})
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.set_key_expiration",
     resource="set_key_expiration",
     measured=True,
@@ -134,7 +134,7 @@ def set_key_expiration(key: str, epoch_seconds: int) -> None:
     )
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.put_dictionary",
     resource="put_dictionary",
     measured=True,
@@ -172,7 +172,7 @@ def put_dictionary(key: str, val: dict, epoch_seconds: Optional[int] = None) -> 
         set_key_expiration(key, epoch_seconds)
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.get_dictionary",
     resource="get_dictionary",
     measured=True,
@@ -200,7 +200,7 @@ def get_dictionary(key: str, force_ttl_check: bool = False) -> dict:
         ) from exc
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.get_string_set",
     resource="get_string_set",
     measured=True,
@@ -216,7 +216,7 @@ def get_string_set(key: str, force_ttl_check: bool = False) -> Set[str]:
     return response.get("Item", {}).get(_STRING_SET_COL, set())
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.put_string_set",
     resource="put_string_set",
     measured=True,
@@ -241,7 +241,7 @@ def put_string_set(key: str, val: Sequence[str], epoch_seconds: Optional[int] = 
         set_key_expiration(key, epoch_seconds)
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.add_to_string_set",
     resource="add_to_string_set",
     measured=True,
@@ -274,7 +274,7 @@ def add_to_string_set(key: str, val: Union[str, Sequence[str]]) -> Set[str]:
     return response["Attributes"][_STRING_SET_COL]
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.remove_from_string_set",
     resource="remove_from_string_set",
     measured=True,
@@ -307,7 +307,7 @@ def remove_from_string_set(key: str, val: Union[str, Sequence[str]]) -> Set[str]
     return response["Attributes"][_STRING_SET_COL]
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.reset_string_set",
     resource="reset_string_set",
     measured=True,
@@ -321,7 +321,7 @@ def reset_string_set(key: str) -> None:
     )
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.evaluate_threshold",
     resource="evaluate_threshold",
     measured=True,
@@ -337,7 +337,7 @@ def evaluate_threshold(key: str, threshold: int = 10, expiry_seconds: int = 3600
     return False
 
 
-@tracing.wrap(
+@monitoring.wrap(
     name="panther_detection_helpers.caching.check_account_age",
     resource="check_account_age",
     measured=True,

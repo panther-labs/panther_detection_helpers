@@ -3,6 +3,7 @@ import logging
 import os
 from typing import Any, Callable, Dict, Optional, Union
 
+import datadog
 from ddtrace import Span, tracer
 from ddtrace.constants import SPAN_MEASURED_KEY
 
@@ -15,9 +16,14 @@ ERROR_TYPE_TAG = "error.type"
 ERROR_STACK_TAG = "error.stack"
 
 USE_MONITORING = os.getenv("DD_ENV", "").lower() in ["prod", "dev"] and bool(
-    os.getenv("DD_TRACING_ENABLED", "") and os.getenv("USE_DETECTION_HELPER_MONITORING")
+    os.getenv("USE_DETECTION_HELPER_MONITORING")
 )
-logging.info("panther_detection_helpers.tracing SE_MONITORING = %s", USE_MONITORING)
+logging.info("panther_detection_helpers.monitoring DD_ENV = %s", os.getenv("DD_ENV", ""))
+logging.info(
+    "panther_detection_helpers.monitoring USE_DETECTION_HELPER_MONITORING = %s",
+    os.getenv("USE_DETECTION_HELPER_MONITORING"),
+)
+logging.info("panther_detection_helpers.monitoring USE_MONITORING = %s", USE_MONITORING)
 
 
 # pylint: disable=too-many-arguments
@@ -71,7 +77,7 @@ def finish_span(
         ...
         finish_span(span, error_message="my_error_message", error_type="network_error", error_stack=some_stack_trace)
     """
-    error_tags = {}
+    error_tags: Dict[Union[str, bytes], str] = {}
     if error_message:
         error_tags[ERROR_MESSAGE_TAG] = error_message
     if error_type:
@@ -95,7 +101,7 @@ def wrap(
     service: Optional[str] = None,
     resource: Optional[str] = None,
     span_type: Optional[str] = None,
-    tags: Optional[Dict[Union[bytes, str], str]] = None,
+    tags: Optional[Dict[Union[str, bytes], str]] = None,
 ) -> Callable[..., Any]:
     """
     wrap is a function decorator to trace a function and adds logging.
@@ -137,7 +143,8 @@ def wrap(
                     measured=measured,
                     tags=tags,
                 ):
-                    return func(*args, **kwargs)
+                    with datadog.statsd.timed("example_metric.timer"):
+                        return func(*args, **kwargs)
 
             except Exception as err:  # pylint: disable=broad-except
                 logging.error(
