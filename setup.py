@@ -6,8 +6,7 @@ VERSION = "0.1.0"
 
 install_requires = [
     'jsonpath-ng',
-    'ddtrace'
-    'datadog'
+    'datadog',
 ]
 
 with open('requirements.txt') as f:

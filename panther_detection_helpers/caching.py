@@ -37,11 +37,7 @@ def kv_table() -> boto3.resource:
     return _KV_TABLE
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.ttl_expired",
-    resource="ttl_expired",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.ttl_expired")
 def ttl_expired(response: dict) -> bool:
     """Checks whether a response from the panther-kv table has passed it's TTL date"""
     # This can be used when the TTL timing is very exacting and DDB's cleanup is too slow
@@ -49,11 +45,7 @@ def ttl_expired(response: dict) -> bool:
     return expiration and float(expiration) <= (datetime.now()).timestamp()
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.get_counter",
-    resource="get_counter",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.get_counter")
 def get_counter(key: str, force_ttl_check: bool = False) -> int:
     """Get a counter's current value (defaulting to 0 if key does not exist)."""
     response = kv_table().get_item(
@@ -65,11 +57,7 @@ def get_counter(key: str, force_ttl_check: bool = False) -> int:
     return response.get("Item", {}).get(_COUNT_COL, 0)
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.increment_counter",
-    resource="increment_counter",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.increment_counter")
 def increment_counter(key: str, val: int = 1) -> int:
     """Increment a counter in the table.
 
@@ -92,21 +80,13 @@ def increment_counter(key: str, val: int = 1) -> int:
     return response["Attributes"][_COUNT_COL].to_integral_value()
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.reset_counter",
-    resource="reset_counter",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.reset_counter")
 def reset_counter(key: str) -> None:
     """Reset a counter to 0."""
     kv_table().put_item(Item={"key": key, _COUNT_COL: 0})
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.set_key_expiration",
-    resource="set_key_expiration",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.set_key_expiration")
 def set_key_expiration(key: str, epoch_seconds: int) -> None:
     """Configure the key to automatically expire at the given time.
 
@@ -134,11 +114,7 @@ def set_key_expiration(key: str, epoch_seconds: int) -> None:
     )
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.put_dictionary",
-    resource="put_dictionary",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.put_dictionary")
 def put_dictionary(key: str, val: dict, epoch_seconds: Optional[int] = None) -> None:
     """Overwrite a dictionary under the given key.
 
@@ -172,11 +148,7 @@ def put_dictionary(key: str, val: dict, epoch_seconds: Optional[int] = None) -> 
         set_key_expiration(key, epoch_seconds)
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.get_dictionary",
-    resource="get_dictionary",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.get_dictionary")
 def get_dictionary(key: str, force_ttl_check: bool = False) -> dict:
     # Retrieve the item from DynamoDB
     response = kv_table().get_item(Key={"key": key})
@@ -200,11 +172,7 @@ def get_dictionary(key: str, force_ttl_check: bool = False) -> dict:
         ) from exc
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.get_string_set",
-    resource="get_string_set",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.get_string_set")
 def get_string_set(key: str, force_ttl_check: bool = False) -> Set[str]:
     """Get a string set's current value (defaulting to empty set if key does not exit)."""
     response = kv_table().get_item(
@@ -216,11 +184,7 @@ def get_string_set(key: str, force_ttl_check: bool = False) -> Set[str]:
     return response.get("Item", {}).get(_STRING_SET_COL, set())
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.put_string_set",
-    resource="put_string_set",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.put_string_set")
 def put_string_set(key: str, val: Sequence[str], epoch_seconds: Optional[int] = None) -> None:
     """Overwrite a string set under the given key.
 
@@ -241,11 +205,7 @@ def put_string_set(key: str, val: Sequence[str], epoch_seconds: Optional[int] = 
         set_key_expiration(key, epoch_seconds)
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.add_to_string_set",
-    resource="add_to_string_set",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.add_to_string_set")
 def add_to_string_set(key: str, val: Union[str, Sequence[str]]) -> Set[str]:
     """Add one or more strings to a set.
 
@@ -274,11 +234,7 @@ def add_to_string_set(key: str, val: Union[str, Sequence[str]]) -> Set[str]:
     return response["Attributes"][_STRING_SET_COL]
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.remove_from_string_set",
-    resource="remove_from_string_set",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.remove_from_string_set")
 def remove_from_string_set(key: str, val: Union[str, Sequence[str]]) -> Set[str]:
     """Remove one or more strings from a set.
 
@@ -307,11 +263,7 @@ def remove_from_string_set(key: str, val: Union[str, Sequence[str]]) -> Set[str]
     return response["Attributes"][_STRING_SET_COL]
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.reset_string_set",
-    resource="reset_string_set",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.reset_string_set")
 def reset_string_set(key: str) -> None:
     """Reset a string set to empty."""
     kv_table().update_item(
@@ -321,11 +273,7 @@ def reset_string_set(key: str) -> None:
     )
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.evaluate_threshold",
-    resource="evaluate_threshold",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.evaluate_threshold")
 def evaluate_threshold(key: str, threshold: int = 10, expiry_seconds: int = 3600) -> bool:
     hourly_error_count = increment_counter(key)
     if hourly_error_count == 1:
@@ -337,11 +285,7 @@ def evaluate_threshold(key: str, threshold: int = 10, expiry_seconds: int = 3600
     return False
 
 
-@monitoring.wrap(
-    name="panther_detection_helpers.caching.check_account_age",
-    resource="check_account_age",
-    measured=True,
-)
+@monitoring.wrap(name="panther_detection_helpers.caching.check_account_age")
 def check_account_age(key: Any) -> bool:
     """
     Searches DynamoDB for stored user_id or account_id string stored by indicator creation
