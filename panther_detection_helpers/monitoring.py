@@ -11,7 +11,7 @@ DD_ENV = os.getenv("DD_ENV", "").lower()
 USE_DETECTION_HELPER_MONITORING = bool(os.getenv("USE_DETECTION_HELPER_MONITORING"))
 USE_MONITORING = DD_ENV in ["prod", "dev"] and USE_DETECTION_HELPER_MONITORING
 
-logging.info(
+logging.debug(
     "panther_detection_helpers.monitoring USE_MONITORING",
     extra={
         "DD_ENV": DD_ENV,
