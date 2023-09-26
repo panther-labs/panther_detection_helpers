@@ -320,3 +320,10 @@ class TestCachingDictionary(DynamoBaseTest, unittest.TestCase):
         self.assertGreater(dict_item["Item"][caching._TTL_COL], int(datetime.datetime.now().timestamp()) + caching._EPOCH_SECONDS_DELTA_DEFAULT - 10)
         self.assertLess(dict_item["Item"][caching._TTL_COL], int(datetime.datetime.now().timestamp()) + caching._EPOCH_SECONDS_DELTA_DEFAULT + 10)
         self.assertEqual(json.loads(dict_item["Item"][caching._DICT_COL]), {"w": "y"})
+
+
+@mock_dynamodb
+class TestUsingMonitoring(DynamoBaseTest, unittest.TestCase):
+    def test_monitoring_does_not_explode(self) -> None:
+        caching.monitoring.USE_MONITORING = True
+        self.assertEqual(caching.get_string_set("strs"), {"a", "b"})
