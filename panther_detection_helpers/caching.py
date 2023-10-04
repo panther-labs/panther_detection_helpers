@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from typing import Any, Mapping, Optional, Sequence, Set, Union
 
+import amazondax
 import boto3
 
 from . import monitoring
@@ -30,11 +31,15 @@ def kv_table() -> boto3.resource:
     # pylint: disable=global-statement
     global _KV_TABLE
     if not _KV_TABLE:
-        # pylint: disable=no-member
-        _KV_TABLE = boto3.resource(
-            "dynamodb",
-            endpoint_url="https://dynamodb" + FIPS_SUFFIX if FIPS_ENABLED else None,
-        ).Table("panther-kv-store")
+        kv_store_dax_endpoint = os.getenv("KV_STORE_DAX_ENDPOINT")
+        if kv_store_dax_endpoint:
+            _KV_TABLE = amazondax.AmazonDaxClient(endpoint_url=kv_store_dax_endpoint)
+        else:
+            # pylint: disable=no-member
+            _KV_TABLE = boto3.resource(
+                "dynamodb",
+                endpoint_url="https://dynamodb" + FIPS_SUFFIX if FIPS_ENABLED else None,
+            ).Table("panther-kv-store")
     return _KV_TABLE
 
 
