@@ -65,7 +65,7 @@ def get_counter(key: str, force_ttl_check: bool = False) -> int:
         The counter's current count
     """
     response = kv_table().get_item(
-        Key={"key": key},
+        Key={"key": {"S": key}},
         ProjectionExpression=f"{_COUNT_COL}, {_TTL_COL}",
     )
     if force_ttl_check and ttl_expired(response):
@@ -86,7 +86,7 @@ def increment_counter(key: str, val: int = 1, epoch_seconds: Optional[int] = Non
         The new value of the count
     """
     response = kv_table().update_item(
-        Key={"key": key},
+        Key={"key": {"S": key}},
         ReturnValues="UPDATED_NEW",
         UpdateExpression="ADD #col :incr SET #ttlcol = :time",
         ExpressionAttributeNames={"#col": _COUNT_COL, "#ttlcol": _TTL_COL},
@@ -104,7 +104,7 @@ def reset_counter(key: str) -> None:
     Args:
         key: The name of the counter to reset
     """
-    kv_table().put_item(Item={"key": key, _COUNT_COL: 0})
+    kv_table().put_item(Item={"key": {"S": key}, _COUNT_COL: {"N": 0}})
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.set_key_expiration")
@@ -119,7 +119,7 @@ def set_key_expiration(key: str, epoch_seconds: Optional[int]) -> None:
                        Default: 90 days from now (set to 0 to disable)
     """
     kv_table().update_item(
-        Key={"key": key},
+        Key={"key": {"S": key}},
         UpdateExpression="SET #ttlcol = :time",
         ExpressionAttributeNames={"#ttlcol": _TTL_COL},
         ExpressionAttributeValues={":time": _finalize_epoch_seconds(epoch_seconds)},
@@ -170,7 +170,11 @@ def put_dictionary(key: str, val: dict, epoch_seconds: Optional[int] = None) -> 
 
     # Store the item in DynamoDB
     kv_table().put_item(
-        Item={"key": key, _DICT_COL: data, _TTL_COL: _finalize_epoch_seconds(epoch_seconds)}
+        Item={
+            "key": {"S": key},
+            _DICT_COL: {"M": data},
+            _TTL_COL: {"N": _finalize_epoch_seconds(epoch_seconds)},
+        }
     )
 
 
@@ -186,7 +190,7 @@ def get_dictionary(key: str, force_ttl_check: bool = False) -> dict:
         The retrieved dictionary
     """
     # Retrieve the item from DynamoDB
-    response = kv_table().get_item(Key={"key": key})
+    response = kv_table().get_item(Key={"key": {"S": key}})
 
     item = response.get("Item", {}).get(_DICT_COL, {})
 
@@ -219,7 +223,7 @@ def get_string_set(key: str, force_ttl_check: bool = False) -> Set[str]:
         The retrieved string set
     """
     response = kv_table().get_item(
-        Key={"key": key},
+        Key={"key": {"S": key}},
         ProjectionExpression=f"{_STRING_SET_COL}, {_TTL_COL}",
     )
     if force_ttl_check and ttl_expired(response):
@@ -245,9 +249,9 @@ def put_string_set(key: str, val: Sequence[str], epoch_seconds: Optional[int] = 
     else:
         kv_table().put_item(
             Item={
-                "key": key,
-                _STRING_SET_COL: set(val),
-                _TTL_COL: _finalize_epoch_seconds(epoch_seconds),
+                "key": {"S": key},
+                _STRING_SET_COL: {"SS": set(val)},
+                _TTL_COL: {"N": _finalize_epoch_seconds(epoch_seconds)},
             }
         )
 
@@ -275,7 +279,7 @@ def add_to_string_set(
             return get_string_set(key)
 
     response = kv_table().update_item(
-        Key={"key": key},
+        Key={"key": {"S": key}},
         ReturnValues="UPDATED_NEW",
         UpdateExpression="ADD #col :ss SET #ttlcol = :time",
         ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
@@ -314,7 +318,7 @@ def remove_from_string_set(
             return get_string_set(key)
 
     response = kv_table().update_item(
-        Key={"key": key},
+        Key={"key": {"S": key}},
         ReturnValues="UPDATED_NEW",
         UpdateExpression="DELETE #col :ss SET #ttlcol = :time",
         ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
@@ -335,7 +339,7 @@ def reset_string_set(key: str) -> None:
         key: The name to reset
     """
     kv_table().update_item(
-        Key={"key": key},
+        Key={"key": {"S": key}},
         UpdateExpression="REMOVE #col",
         ExpressionAttributeNames={"#col": _STRING_SET_COL},
     )
