@@ -1,8 +1,10 @@
 -i https://pypi.org/simple
-botocore==1.31.54; python_version >= '3.7'
+amazon-dax-client==2.0.3
+antlr4-python3-runtime==4.9.3; python_version >= '3.0'
+botocore==1.31.58; python_version >= '3.7'
 certifi==2021.10.8
 chardet==4.0.0
-charset-normalizer==3.2.0; python_full_version >= '3.7.0'
+charset-normalizer==3.3.0; python_full_version >= '3.7.0'
 contextlib2==0.6.0.post1
 datadog==0.47.0
 decorator==5.1.1
