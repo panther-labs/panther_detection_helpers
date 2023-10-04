@@ -26,7 +26,7 @@ def wrap(name: str, tags: Optional[Dict[Union[str, bytes], str]] = None) -> Call
     wrap is a function decorator to add metrics to a function and adds logging.
     If Datadog is not enabled, no metrics or logging is done.
     callers may use the @wrap decorator as follows:
-        @wrap(name="span_operation_name")
+        @wrap(name="operation_name")
         def my_function():
           ...
     """
@@ -42,7 +42,7 @@ def wrap(name: str, tags: Optional[Dict[Union[str, bytes], str]] = None) -> Call
         @functools.wraps(func)
         def func_wrapper(*args: Any, **kwargs: Any) -> Any:
             extras = {
-                "name": name,
+                "op_name": name,
                 "tags": tags,
             }
 
