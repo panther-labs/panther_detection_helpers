@@ -1,12 +1,13 @@
 from distutils.core import setup
 
 
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 
 
 install_requires = [
     'jsonpath-ng',
     'datadog',
+    'amazon-dax-client',
 ]
 
 with open('requirements.txt') as f:
