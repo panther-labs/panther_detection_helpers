@@ -33,7 +33,10 @@ def kv_table() -> boto3.resource:
     if not _KV_TABLE:
         kv_store_dax_endpoint = os.getenv("KV_STORE_DAX_ENDPOINT")
         if kv_store_dax_endpoint:
-            _KV_TABLE = amazondax.AmazonDaxClient(endpoint_url=kv_store_dax_endpoint)
+            _KV_TABLE = amazondax.AmazonDaxClient.resource(
+                endpoint_url=kv_store_dax_endpoint,
+            ).Table("panther-kv-store")
+            # _KV_TABLE = amazondax.AmazonDaxClient(endpoint_url=kv_store_dax_endpoint)
         else:
             # pylint: disable=no-member
             _KV_TABLE = boto3.resource(
