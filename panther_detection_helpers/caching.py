@@ -228,7 +228,7 @@ def get_string_set(key: str, force_ttl_check: bool = False) -> Set[str]:
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.put_string_set")
-def put_string_set(key: str, val: Sequence[str], epoch_seconds: Optional[int] = None) -> None:
+def put_string_set(key: str, val: Set[str], epoch_seconds: Optional[int] = None) -> None:
     """Overwrite a string set under the given key.
 
     This is faster than (reset_string_set + add_string_set) if you know exactly what the contents
