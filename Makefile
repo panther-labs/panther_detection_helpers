@@ -34,7 +34,7 @@ package: package-clean install test lint
 	pipenv run python3 setup.py sdist
 
 publish: install package
-	twine upload dist/*
+	pipenv run twine upload dist/*
 
 test:
 	pipenv run nosetests -v
