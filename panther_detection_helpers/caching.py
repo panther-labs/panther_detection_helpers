@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Mapping, Optional, Sequence, Set, Union
 
 import boto3
+from redis import Redis
 
 from . import monitoring
 
@@ -15,6 +16,7 @@ from . import monitoring
 #
 # Use kv_table() if you want to interact with the table directly.
 _KV_TABLE = None
+_REDIS = None
 _COUNT_COL = "intCount"
 _STRING_SET_COL = "stringSet"
 _DICT_COL = "dictionary"
@@ -36,6 +38,28 @@ def kv_table() -> boto3.resource:
             endpoint_url="https://dynamodb" + FIPS_SUFFIX if FIPS_ENABLED else None,
         ).Table("panther-kv-store")
     return _KV_TABLE
+
+
+def redis() -> Redis:
+    """Lazily build key-value table resource"""
+    # pylint: disable=global-statement
+    global _REDIS
+    if not _REDIS:
+        host = os.getenv("KV_REDIS_HOST")
+        port = os.getenv("KV_REDIS_PORT")
+        _REDIS = Redis(host=host, port=port, decode_responses=True)
+    return _REDIS
+
+
+class RedisLock:
+    def __init__(self, name: str):
+        self.lock = redis().lock(name=f"lock:{name}", timeout=120)
+
+    def __enter__(self) -> None:
+        self.lock.acquire()
+
+    def __exit__(self, *args: Any) -> None:
+        self.lock.release()
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.ttl_expired")
@@ -64,13 +88,22 @@ def get_counter(key: str, force_ttl_check: bool = False) -> int:
     Returns:
         The counter's current count
     """
-    response = kv_table().get_item(
-        Key={"key": key},
-        ProjectionExpression=f"{_COUNT_COL}, {_TTL_COL}",
-    )
-    if force_ttl_check and ttl_expired(response):
-        return 0
-    return response.get("Item", {}).get(_COUNT_COL, 0)
+    with RedisLock(key):
+        redis_count = redis().hget(key, _COUNT_COL)
+        if redis_count and isinstance(redis_count, int):
+            return redis_count
+        response = kv_table().get_item(
+            Key={"key": key},
+            ProjectionExpression=f"{_COUNT_COL}, {_TTL_COL}",
+        )
+        if force_ttl_check and ttl_expired(response):
+            return 0
+
+        counter = response.get("Item", {}).get(_COUNT_COL, 0)
+        redis().hset(key, _COUNT_COL, counter)
+        redis().expireat(key, response.get("Item", {}).get(_TTL_COL, 0))
+
+    return counter
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.increment_counter")
@@ -85,13 +118,18 @@ def increment_counter(key: str, val: int = 1, epoch_seconds: Optional[int] = Non
     Returns:
         The new value of the count
     """
-    response = kv_table().update_item(
-        Key={"key": key},
-        ReturnValues="UPDATED_NEW",
-        UpdateExpression="ADD #col :incr SET #ttlcol = :time",
-        ExpressionAttributeNames={"#col": _COUNT_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={":incr": val, ":time": _finalize_epoch_seconds(epoch_seconds)},
-    )
+    expire_at = _finalize_epoch_seconds(epoch_seconds)
+    with RedisLock(key):
+        response = kv_table().update_item(
+            Key={"key": key},
+            ReturnValues="UPDATED_NEW",
+            UpdateExpression="ADD #col :incr SET #ttlcol = :time",
+            ExpressionAttributeNames={"#col": _COUNT_COL, "#ttlcol": _TTL_COL},
+            ExpressionAttributeValues={":incr": val, ":time": expire_at},
+        )
+
+        redis().hincrby(key, _COUNT_COL, val)
+        redis().expireat(key, expire_at)
 
     # Numeric values are returned as decimal.Decimal
     return response["Attributes"][_COUNT_COL].to_integral_value()
@@ -104,7 +142,9 @@ def reset_counter(key: str) -> None:
     Args:
         key: The name of the counter to reset
     """
-    kv_table().put_item(Item={"key": key, _COUNT_COL: 0})
+    with RedisLock(key):
+        kv_table().put_item(Item={"key": key, _COUNT_COL: 0})
+        redis().hset(key, mapping={_COUNT_COL: 0})
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.set_key_expiration")
@@ -118,12 +158,15 @@ def set_key_expiration(key: str, epoch_seconds: Optional[int]) -> None:
         epoch_seconds: (Optional) How long until the counter expires in seconds.
                        Default: 90 days from now (set to 0 to disable)
     """
-    kv_table().update_item(
-        Key={"key": key},
-        UpdateExpression="SET #ttlcol = :time",
-        ExpressionAttributeNames={"#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={":time": _finalize_epoch_seconds(epoch_seconds)},
-    )
+    expire_at = _finalize_epoch_seconds(epoch_seconds)
+    with RedisLock(key):
+        kv_table().update_item(
+            Key={"key": key},
+            UpdateExpression="SET #ttlcol = :time",
+            ExpressionAttributeNames={"#ttlcol": _TTL_COL},
+            ExpressionAttributeValues={":time": expire_at},
+        )
+        redis().expireat(key, expire_at)
 
 
 def _finalize_epoch_seconds(epoch_seconds: Optional[int]) -> int:
@@ -169,9 +212,12 @@ def put_dictionary(key: str, val: dict, epoch_seconds: Optional[int] = None) -> 
         ) from exc
 
     # Store the item in DynamoDB
-    kv_table().put_item(
-        Item={"key": key, _DICT_COL: data, _TTL_COL: _finalize_epoch_seconds(epoch_seconds)}
-    )
+    expire_at = _finalize_epoch_seconds(epoch_seconds)
+    with RedisLock(key):
+        kv_table().put_item(Item={"key": key, _DICT_COL: data, _TTL_COL: expire_at})
+
+        redis().hset(key, _DICT_COL, data)
+        redis().expireat(key, expire_at)
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.get_dictionary")
@@ -185,26 +231,42 @@ def get_dictionary(key: str, force_ttl_check: bool = False) -> dict:
     Returns:
         The retrieved dictionary
     """
-    # Retrieve the item from DynamoDB
-    response = kv_table().get_item(Key={"key": key})
+    with RedisLock(key):
+        # Try retrieve from Redis
+        redis_item = redis().hget(key, _DICT_COL)
+        if redis_item and isinstance(redis_item, str):
+            try:
+                return json.loads(redis_item)
+            except json.decoder.JSONDecodeError as exc:
+                raise ValueError(
+                    "panther_oss_helpers.get_dictionary: "
+                    "Data found in Redis could not be decoded into JSON"
+                ) from exc
 
-    item = response.get("Item", {}).get(_DICT_COL, {})
+        # Retrieve the item from DynamoDB
+        response = kv_table().get_item(Key={"key": key})
 
-    # Check if the item was not found, if so return empty dictionary
-    if not item:
-        return {}
+        item = response.get("Item", {}).get(_DICT_COL, {})
 
-    if force_ttl_check and ttl_expired(response):
-        return {}
+        # Check if the item was not found, if so return empty dictionary
+        if not item:
+            return {}
 
-    try:
-        # Deserialize from JSON to a Python dictionary
-        return json.loads(item)
-    except json.decoder.JSONDecodeError as exc:
-        raise ValueError(
-            "panther_oss_helpers.get_dictionary: "
-            "Data found in DynamoDB could not be decoded into JSON"
-        ) from exc
+        if force_ttl_check and ttl_expired(response):
+            return {}
+
+        try:
+            # Deserialize from JSON to a Python dictionary
+            json_dict = json.loads(item)
+        except json.decoder.JSONDecodeError as exc:
+            raise ValueError(
+                "panther_oss_helpers.get_dictionary: "
+                "Data found in DynamoDB could not be decoded into JSON"
+            ) from exc
+
+        redis().hset(key, _DICT_COL, item)
+        redis().expireat(key, response.get("Item", {}).get(_TTL_COL, 0))
+    return json_dict
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.get_string_set")
@@ -218,13 +280,29 @@ def get_string_set(key: str, force_ttl_check: bool = False) -> Set[str]:
     Returns:
         The retrieved string set
     """
-    response = kv_table().get_item(
-        Key={"key": key},
-        ProjectionExpression=f"{_STRING_SET_COL}, {_TTL_COL}",
-    )
-    if force_ttl_check and ttl_expired(response):
-        return set()
-    return response.get("Item", {}).get(_STRING_SET_COL, set())
+    with RedisLock(key):
+        redis_ss = redis().hget(key, _STRING_SET_COL)
+        if redis_ss and isinstance(redis_ss, str):
+            try:
+                redis_list = json.loads(redis_ss)
+            except json.decoder.JSONDecodeError as exc:
+                raise ValueError(
+                    "panther_oss_helpers.get_string_set: "
+                    "Data found in Redis could not be decoded into JSON"
+                ) from exc
+            return set(str(elem) for elem in redis_list)
+
+        response = kv_table().get_item(
+            Key={"key": key},
+            ProjectionExpression=f"{_STRING_SET_COL}, {_TTL_COL}",
+        )
+        if force_ttl_check and ttl_expired(response):
+            return set()
+        ss = response.get("Item", {}).get(_STRING_SET_COL, set())
+
+        redis().hset(key, _STRING_SET_COL, json.dumps(ss))
+        redis().expireat(key, response.get("Item", {}).get(_TTL_COL, 0))
+    return ss
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.put_string_set")
@@ -243,13 +321,17 @@ def put_string_set(key: str, val: Set[str], epoch_seconds: Optional[int] = None)
         # Can't put an empty string set - remove it instead
         reset_string_set(key)
     else:
-        kv_table().put_item(
-            Item={
-                "key": key,
-                _STRING_SET_COL: set(val),
-                _TTL_COL: _finalize_epoch_seconds(epoch_seconds),
-            }
-        )
+        expire_at = _finalize_epoch_seconds(epoch_seconds)
+        with RedisLock(key):
+            kv_table().put_item(
+                Item={
+                    "key": key,
+                    _STRING_SET_COL: set(val),
+                    _TTL_COL: expire_at,
+                }
+            )
+            redis().hset(key, _STRING_SET_COL, json.dumps(set(val)))
+            redis().expireat(key, expire_at)
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.add_to_string_set")
@@ -274,20 +356,26 @@ def add_to_string_set(
             # We can't add empty sets, just return the existing value instead
             return get_string_set(key)
 
-    response = kv_table().update_item(
-        Key={"key": key},
-        ReturnValues="UPDATED_NEW",
-        UpdateExpression="ADD #col :ss SET #ttlcol = :time",
-        ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={
-            ":ss": item_value,
-            ":time": _finalize_epoch_seconds(epoch_seconds),
-        },
-    )
+    expire_at = _finalize_epoch_seconds(epoch_seconds)
+    with RedisLock(key):
+        response = kv_table().update_item(
+            Key={"key": key},
+            ReturnValues="UPDATED_NEW",
+            UpdateExpression="ADD #col :ss SET #ttlcol = :time",
+            ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
+            ExpressionAttributeValues={
+                ":ss": item_value,
+                ":time": expire_at,
+            },
+        )
 
-    current_string_set = response["Attributes"].get(_STRING_SET_COL, None)
-    if current_string_set is None:
-        current_string_set = get_string_set(key)
+        current_string_set = response["Attributes"].get(_STRING_SET_COL, None)
+        if current_string_set is None:
+            current_string_set = get_string_set(key)
+
+        redis().hset(key, _STRING_SET_COL, json.dumps(current_string_set))
+        redis().expireat(key, expire_at)
+
     return current_string_set
 
 
@@ -313,18 +401,24 @@ def remove_from_string_set(
             # We can't remove empty sets, just return the existing value instead
             return get_string_set(key)
 
-    response = kv_table().update_item(
-        Key={"key": key},
-        ReturnValues="UPDATED_NEW",
-        UpdateExpression="DELETE #col :ss SET #ttlcol = :time",
-        ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={
-            ":ss": item_value,
-            ":time": _finalize_epoch_seconds(epoch_seconds),
-        },
-    )
+    expire_at = _finalize_epoch_seconds(epoch_seconds)
+    with RedisLock(key):
+        response = kv_table().update_item(
+            Key={"key": key},
+            ReturnValues="UPDATED_NEW",
+            UpdateExpression="DELETE #col :ss SET #ttlcol = :time",
+            ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
+            ExpressionAttributeValues={
+                ":ss": item_value,
+                ":time": expire_at,
+            },
+        )
+        current_string_set = response["Attributes"][_STRING_SET_COL]
 
-    return response["Attributes"][_STRING_SET_COL]
+        redis().hset(key, _STRING_SET_COL, json.dumps(current_string_set))
+        redis().expireat(key, expire_at)
+
+    return current_string_set
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.reset_string_set")
@@ -334,11 +428,14 @@ def reset_string_set(key: str) -> None:
     Args:
         key: The name to reset
     """
-    kv_table().update_item(
-        Key={"key": key},
-        UpdateExpression="REMOVE #col",
-        ExpressionAttributeNames={"#col": _STRING_SET_COL},
-    )
+    with RedisLock(key):
+        kv_table().update_item(
+            Key={"key": key},
+            UpdateExpression="REMOVE #col",
+            ExpressionAttributeNames={"#col": _STRING_SET_COL},
+        )
+
+        redis().hdel(key, [_STRING_SET_COL])
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.evaluate_threshold")

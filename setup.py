@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 
-VERSION = "0.1.3"
+VERSION = "0.3.0"
 
 
 install_requires = [
