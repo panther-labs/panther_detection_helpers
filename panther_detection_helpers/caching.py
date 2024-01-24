@@ -1,6 +1,5 @@
 import json
 import os
-import time
 from datetime import datetime
 from typing import Any, Mapping, Optional, Sequence, Set, Union
 
@@ -74,17 +73,38 @@ def get_counter(key: str, force_ttl_check: bool = False) -> int:
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.increment_counter")
-def increment_counter(key: str, val: int = 1, epoch_seconds: Optional[int] = None) -> int:
+def increment_counter(
+    key: str, val: int = 1, epoch_seconds: Optional[int] = None, force_ttl_check: bool = False
+) -> int:
     """Increment a counter in the table.
 
     Args:
         key: The name of the counter (need not exist yet)
-        val: How much to add to the counter
+        val (Optional): How much to add to the counter. Default: 1
         epoch_seconds: (Optional) How long until the counter expires in seconds. Default: 90 days from now
+        force_ttl_check (Optional): Whether to force a TTL check (rather than relying on underlying eventually-consistent mechanisms)
 
     Returns:
         The new value of the count
     """
+
+    # If the TTL must be checked, we have to lookup the existing record before writing to
+    # verify the TTL is not expired. Since we have to look it up anyways, we can just
+    # write back the new value.
+    if force_ttl_check:
+        old_val = get_counter(key, force_ttl_check=True)
+        response = kv_table().update_item(
+            Key={"key": key},
+            ReturnValues="UPDATED_NEW",
+            UpdateExpression="SET #col :incr SET #ttlcol = :time",
+            ExpressionAttributeNames={"#col": _COUNT_COL, "#ttlcol": _TTL_COL},
+            ExpressionAttributeValues={
+                ":incr": old_val + val,
+                ":time": _finalize_epoch_seconds(epoch_seconds),
+            },
+        )
+        return old_val + val
+
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
@@ -254,7 +274,10 @@ def put_string_set(key: str, val: Set[str], epoch_seconds: Optional[int] = None)
 
 @monitoring.wrap(name="panther_detection_helpers.caching.add_to_string_set")
 def add_to_string_set(
-    key: str, val: Union[str, Sequence[str]], epoch_seconds: Optional[int] = None
+    key: str,
+    val: Union[str, Sequence[str]],
+    epoch_seconds: Optional[int] = None,
+    force_ttl_check: bool = False,
 ) -> Set[str]:
     """Add one or more strings to a set.
 
@@ -262,6 +285,7 @@ def add_to_string_set(
         key: The name of the string set
         val: Either a single string or a list/tuple/set of strings to add
         epoch_seconds: (Optional) How long until the counter expires in seconds. Default: 90 days from now
+        force_ttl_check: (Optional)  Whether to force a TTL check (rather than relying on underlying eventually-consistent mechanisms)
 
     Returns:
         The new value of the string set
@@ -272,7 +296,26 @@ def add_to_string_set(
         item_value = set(val)
         if not item_value:
             # We can't add empty sets, just return the existing value instead
-            return get_string_set(key)
+            return get_string_set(key, force_ttl_check=True)
+
+    # If the TTL must be checked, we have to lookup the existing record before writing to
+    # verify the TTL is not expired. Since we have to look it up anyways, we can just
+    # write back the new value.
+    if force_ttl_check:
+        old_set = get_string_set(key, force_ttl_check=True)
+        new_set = old_set.union(item_value)
+
+        response = kv_table().update_item(
+            Key={"key": key},
+            ReturnValues="UPDATED_NEW",
+            UpdateExpression="SET #col :ss SET #ttlcol = :time",
+            ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
+            ExpressionAttributeValues={
+                ":ss": new_set,
+                ":time": _finalize_epoch_seconds(epoch_seconds),
+            },
+        )
+        return new_set
 
     response = kv_table().update_item(
         Key={"key": key},
@@ -293,7 +336,10 @@ def add_to_string_set(
 
 @monitoring.wrap(name="panther_detection_helpers.caching.remove_from_string_set")
 def remove_from_string_set(
-    key: str, val: Union[str, Sequence[str]], epoch_seconds: Optional[int] = None
+    key: str,
+    val: Union[str, Sequence[str]],
+    epoch_seconds: Optional[int] = None,
+    force_ttl_check: bool = False,
 ) -> Set[str]:
     """Remove one or more strings from a set.
 
@@ -301,6 +347,7 @@ def remove_from_string_set(
         key: The name of the string set
         val: Either a single string or a list/tuple/set of strings to remove
         epoch_seconds: (Optional) How long until the counter expires in seconds. Default: 90 days from now
+        force_ttl_check: (Optional) Whether to force a TTL check (rather than relying on underlying eventually-consistent mechanisms)
 
     Returns:
         The new value of the string set
@@ -312,6 +359,29 @@ def remove_from_string_set(
         if not item_value:
             # We can't remove empty sets, just return the existing value instead
             return get_string_set(key)
+
+    # If the TTL must be checked, we have to lookup the existing record before writing to
+    # verify the TTL is not expired. Since we have to look it up anyways, we can just
+    # write back the new value.
+    if force_ttl_check:
+        old_set = get_string_set(key, force_ttl_check=True)
+        # Can't put an empty string set - remove it instead
+        if not old_set:
+            reset_string_set(key)
+            return set()
+
+        new_set = old_set.difference(item_value)
+        response = kv_table().update_item(
+            Key={"key": key},
+            ReturnValues="UPDATED_NEW",
+            UpdateExpression="SET #col :ss SET #ttlcol = :time",
+            ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
+            ExpressionAttributeValues={
+                ":ss": new_set,
+                ":time": _finalize_epoch_seconds(epoch_seconds),
+            },
+        )
+        return new_set
 
     response = kv_table().update_item(
         Key={"key": key},
@@ -342,35 +412,39 @@ def reset_string_set(key: str) -> None:
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.evaluate_threshold")
-def evaluate_threshold(key: str, threshold: int = 10, expiry_seconds: int = 3600) -> bool:
+def evaluate_threshold(
+    key: str, threshold: int = 10, expiry_seconds: int = 3600, force_ttl_check: bool = False
+) -> bool:
     """
     Increment counter and check whether the count meets the threshold. If so, reset and alert.
     Args:
         key: The name to evaluate
-        threshold: The threshold to meet or exceed
-        expiry_seconds: How many seconds from now to expire
+        threshold: (Optional) The threshold to meet or exceed. Default: 10
+        expiry_seconds: (Optional) How many seconds from now to expire
+        force_ttl_check: (Optional) Whether to force a TTL check (rather than relying on underlying eventually-consistent mechanisms)
 
     Returns: Whether we met the threshold
     """
-    hourly_error_count = increment_counter(key)
-    if hourly_error_count == 1:
-        set_key_expiration(key, int(time.time()) + expiry_seconds)
+    hourly_error_count = increment_counter(
+        key, force_ttl_check=force_ttl_check, epoch_seconds=expiry_seconds
+    )
     # If it exceeds our threshold, reset and then return an alert
-    elif hourly_error_count >= threshold:
+    if hourly_error_count >= threshold:
         reset_counter(key)
         return True
     return False
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.check_account_age")
-def check_account_age(key: Any) -> bool:
+def check_account_age(key: Any, force_ttl_check: bool = False) -> bool:
     """
     Searches DynamoDB for stored user_id or account_id string stored by indicator creation
     rules for new user / account creation
 
     Args:
         key: The name to check
+        force_ttl_check: (Optional) Whether to force a TTL check (rather than relying on underlying eventually-consistent mechanisms)
     """
     if isinstance(key, str) and key != "":
-        return bool(get_string_set(key))
+        return bool(get_string_set(key, force_ttl_check=force_ttl_check))
     return False
