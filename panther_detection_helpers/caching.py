@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import Any, Mapping, Optional, Sequence, Set, Union
 
 import boto3
+from boto3.dynamodb.conditions import Attr
+from botocore.exceptions import ClientError
 
 from . import monitoring
 
@@ -73,48 +75,51 @@ def get_counter(key: str, force_ttl_check: bool = False) -> int:
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.increment_counter")
-def increment_counter(
-    key: str, val: int = 1, epoch_seconds: Optional[int] = None, force_ttl_check: bool = False
-) -> int:
+def increment_counter(key: str, val: int = 1, epoch_seconds: Optional[int] = None) -> int:
     """Increment a counter in the table.
 
     Args:
         key: The name of the counter (need not exist yet)
         val (Optional): How much to add to the counter. Default: 1
         epoch_seconds: (Optional) How long until the counter expires in seconds. Default: 90 days from now
-        force_ttl_check (Optional): Whether to force a TTL check (rather than relying on underlying eventually-consistent mechanisms)
 
     Returns:
         The new value of the count
     """
 
-    # If the TTL must be checked, we have to lookup the existing record before writing to
-    # verify the TTL is not expired. Since we have to look it up anyways, we can just
-    # write back the new value.
-    if force_ttl_check:
-        old_val = get_counter(key, force_ttl_check=True)
+    try:
         response = kv_table().update_item(
             Key={"key": key},
             ReturnValues="UPDATED_NEW",
-            UpdateExpression="SET #col :incr SET #ttlcol = :time",
+            UpdateExpression="ADD #col :incr SET #ttlcol = :time",
             ExpressionAttributeNames={"#col": _COUNT_COL, "#ttlcol": _TTL_COL},
             ExpressionAttributeValues={
-                ":incr": old_val + val,
+                ":incr": val,
                 ":time": _finalize_epoch_seconds(epoch_seconds),
             },
+            ConditionExpression=Attr(_TTL_COL).gte(
+                _finalize_epoch_seconds(int(datetime.now().timestamp()))
+            ),
         )
-        return old_val + val
+        return response["Attributes"][_COUNT_COL].to_integral_value()
+    except ClientError as exception:
+        # Ignore the ConditionalCheckFailedException, bubble up
+        # other exceptions.
+        if exception.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
 
+    # If we got here, the conditional update failed and we know the key is expired
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
-        UpdateExpression="ADD #col :incr SET #ttlcol = :time",
+        UpdateExpression="SET #col = :incr, #ttlcol = :time",
         ExpressionAttributeNames={"#col": _COUNT_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={":incr": val, ":time": _finalize_epoch_seconds(epoch_seconds)},
+        ExpressionAttributeValues={
+            ":incr": val,
+            ":time": _finalize_epoch_seconds(epoch_seconds),
+        },
     )
-
-    # Numeric values are returned as decimal.Decimal
-    return response["Attributes"][_COUNT_COL].to_integral_value()
+    return val
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.reset_counter")
@@ -124,7 +129,11 @@ def reset_counter(key: str) -> None:
     Args:
         key: The name of the counter to reset
     """
-    kv_table().put_item(Item={"key": key, _COUNT_COL: 0})
+    kv_table().update_item(
+        Key={"key": key},
+        UpdateExpression="REMOVE #col",
+        ExpressionAttributeNames={"#col": _COUNT_COL},
+    )
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.set_key_expiration")
@@ -277,7 +286,6 @@ def add_to_string_set(
     key: str,
     val: Union[str, Sequence[str]],
     epoch_seconds: Optional[int] = None,
-    force_ttl_check: bool = False,
 ) -> Set[str]:
     """Add one or more strings to a set.
 
@@ -285,7 +293,6 @@ def add_to_string_set(
         key: The name of the string set
         val: Either a single string or a list/tuple/set of strings to add
         epoch_seconds: (Optional) How long until the counter expires in seconds. Default: 90 days from now
-        force_ttl_check: (Optional)  Whether to force a TTL check (rather than relying on underlying eventually-consistent mechanisms)
 
     Returns:
         The new value of the string set
@@ -298,29 +305,35 @@ def add_to_string_set(
             # We can't add empty sets, just return the existing value instead
             return get_string_set(key, force_ttl_check=True)
 
-    # If the TTL must be checked, we have to lookup the existing record before writing to
-    # verify the TTL is not expired. Since we have to look it up anyways, we can just
-    # write back the new value.
-    if force_ttl_check:
-        old_set = get_string_set(key, force_ttl_check=True)
-        new_set = old_set.union(item_value)
-
+    try:
         response = kv_table().update_item(
             Key={"key": key},
             ReturnValues="UPDATED_NEW",
-            UpdateExpression="SET #col :ss SET #ttlcol = :time",
+            UpdateExpression="ADD #col :ss SET #ttlcol = :time",
             ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
             ExpressionAttributeValues={
-                ":ss": new_set,
+                ":ss": item_value,
                 ":time": _finalize_epoch_seconds(epoch_seconds),
             },
+            ConditionExpression=Attr(_TTL_COL).gte(
+                _finalize_epoch_seconds(int(datetime.now().timestamp()))
+            ),
         )
-        return new_set
+        current_string_set = response["Attributes"].get(_STRING_SET_COL, None)
+        if current_string_set is None:
+            current_string_set = get_string_set(key, force_ttl_check=True)
+        return current_string_set
+    except ClientError as exception:
+        # Ignore the ConditionalCheckFailedException, bubble up
+        # other exceptions.
+        if exception.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
 
+    # If we got here, the conditional update failed and we know the key is expired
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
-        UpdateExpression="ADD #col :ss SET #ttlcol = :time",
+        UpdateExpression="SET #col = :ss, #ttlcol = :time",
         ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
         ExpressionAttributeValues={
             ":ss": item_value,
@@ -330,7 +343,7 @@ def add_to_string_set(
 
     current_string_set = response["Attributes"].get(_STRING_SET_COL, None)
     if current_string_set is None:
-        current_string_set = get_string_set(key)
+        current_string_set = get_string_set(key, force_ttl_check=True)
     return current_string_set
 
 
@@ -339,7 +352,6 @@ def remove_from_string_set(
     key: str,
     val: Union[str, Sequence[str]],
     epoch_seconds: Optional[int] = None,
-    force_ttl_check: bool = False,
 ) -> Set[str]:
     """Remove one or more strings from a set.
 
@@ -347,7 +359,6 @@ def remove_from_string_set(
         key: The name of the string set
         val: Either a single string or a list/tuple/set of strings to remove
         epoch_seconds: (Optional) How long until the counter expires in seconds. Default: 90 days from now
-        force_ttl_check: (Optional) Whether to force a TTL check (rather than relying on underlying eventually-consistent mechanisms)
 
     Returns:
         The new value of the string set
@@ -358,43 +369,32 @@ def remove_from_string_set(
         item_value = set(val)
         if not item_value:
             # We can't remove empty sets, just return the existing value instead
-            return get_string_set(key)
+            return get_string_set(key, force_ttl_check=True)
 
-    # If the TTL must be checked, we have to lookup the existing record before writing to
-    # verify the TTL is not expired. Since we have to look it up anyways, we can just
-    # write back the new value.
-    if force_ttl_check:
-        old_set = get_string_set(key, force_ttl_check=True)
-        # Can't put an empty string set - remove it instead
-        if not old_set:
-            reset_string_set(key)
-            return set()
-
-        new_set = old_set.difference(item_value)
+    try:
         response = kv_table().update_item(
             Key={"key": key},
             ReturnValues="UPDATED_NEW",
-            UpdateExpression="SET #col :ss SET #ttlcol = :time",
+            UpdateExpression="DELETE #col :ss SET #ttlcol = :time",
             ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
             ExpressionAttributeValues={
-                ":ss": new_set,
+                ":ss": item_value,
                 ":time": _finalize_epoch_seconds(epoch_seconds),
             },
+            ConditionExpression=Attr(_TTL_COL).gte(
+                _finalize_epoch_seconds(int(datetime.now().timestamp()))
+            ),
         )
-        return new_set
+        return response["Attributes"].get(_STRING_SET_COL, set())
+    except ClientError as exception:
+        # Ignore the ConditionalCheckFailedException, bubble up
+        # other exceptions.
+        if exception.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
 
-    response = kv_table().update_item(
-        Key={"key": key},
-        ReturnValues="UPDATED_NEW",
-        UpdateExpression="DELETE #col :ss SET #ttlcol = :time",
-        ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={
-            ":ss": item_value,
-            ":time": _finalize_epoch_seconds(epoch_seconds),
-        },
-    )
-
-    return response["Attributes"][_STRING_SET_COL]
+    # If we got here, the conditional update failed and we know the key is expired
+    reset_string_set(key)
+    return set()
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.reset_string_set")
