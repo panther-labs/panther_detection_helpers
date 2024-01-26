@@ -412,22 +412,17 @@ def reset_string_set(key: str) -> None:
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.evaluate_threshold")
-def evaluate_threshold(
-    key: str, threshold: int = 10, expiry_seconds: int = 3600, force_ttl_check: bool = False
-) -> bool:
+def evaluate_threshold(key: str, threshold: int = 10, expiry_seconds: int = 3600) -> bool:
     """
     Increment counter and check whether the count meets the threshold. If so, reset and alert.
     Args:
         key: The name to evaluate
         threshold: (Optional) The threshold to meet or exceed. Default: 10
         expiry_seconds: (Optional) How many seconds from now to expire
-        force_ttl_check: (Optional) Whether to force a TTL check (rather than relying on underlying eventually-consistent mechanisms)
 
     Returns: Whether we met the threshold
     """
-    hourly_error_count = increment_counter(
-        key, force_ttl_check=force_ttl_check, epoch_seconds=expiry_seconds
-    )
+    hourly_error_count = increment_counter(key, epoch_seconds=expiry_seconds)
     # If it exceeds our threshold, reset and then return an alert
     if hourly_error_count >= threshold:
         reset_counter(key)
@@ -436,15 +431,14 @@ def evaluate_threshold(
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.check_account_age")
-def check_account_age(key: Any, force_ttl_check: bool = False) -> bool:
+def check_account_age(key: Any) -> bool:
     """
     Searches DynamoDB for stored user_id or account_id string stored by indicator creation
     rules for new user / account creation
 
     Args:
         key: The name to check
-        force_ttl_check: (Optional) Whether to force a TTL check (rather than relying on underlying eventually-consistent mechanisms)
     """
     if isinstance(key, str) and key != "":
-        return bool(get_string_set(key, force_ttl_check=force_ttl_check))
+        return bool(get_string_set(key, force_ttl_check=True))
     return False
