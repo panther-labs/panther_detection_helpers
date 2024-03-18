@@ -35,7 +35,7 @@ def kv_table() -> boto3.resource:
         _KV_TABLE = boto3.resource(
             "dynamodb",
             endpoint_url="https://dynamodb" + FIPS_SUFFIX if FIPS_ENABLED else None,
-        ).Table("panther-kv-store")
+        ).Table(os.getenv("KV_STORE_TABLE_NAME", "panther-kv-store"))
     return _KV_TABLE
 
 
