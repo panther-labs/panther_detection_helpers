@@ -5,12 +5,12 @@ import unittest
 from abc import ABC
 
 import boto3
-from moto import mock_dynamodb
+from moto import mock_aws
 
 from panther_detection_helpers import caching
 
 
-@mock_dynamodb
+@mock_aws
 class DynamoBaseTest(ABC):
     # pylint: disable=protected-access,assignment-from-no-return
     def setUp(self):
@@ -41,8 +41,7 @@ class DynamoBaseTest(ABC):
         caching.put_string_set("strs", ["a", "b"])
         caching.put_dictionary("d", {"z": "y"})
 
-
-@mock_dynamodb
+@mock_aws
 class TestCachingCounter(DynamoBaseTest, unittest.TestCase):
     def test_unset_counter(self):
         self.assertEqual(caching.get_counter("panther"), 0)
@@ -157,8 +156,7 @@ class TestCachingCounter(DynamoBaseTest, unittest.TestCase):
         self.assertLess(panther_item["Item"][caching._TTL_COL], int(datetime.datetime.now().timestamp()) + caching._EPOCH_SECONDS_DELTA_DEFAULT + 10)
         self.assertEqual(panther_item["Item"][caching._COUNT_COL], 1)
 
-
-@mock_dynamodb
+@mock_aws
 class TestCachingStringSet(DynamoBaseTest, unittest.TestCase):
     def test_new_add(self):
         self.assertEqual(caching.get_string_set("strs2"), set())
@@ -281,8 +279,7 @@ class TestCachingStringSet(DynamoBaseTest, unittest.TestCase):
         self.assertLess(strs_item["Item"][caching._TTL_COL], int(datetime.datetime.now().timestamp()) + caching._EPOCH_SECONDS_DELTA_DEFAULT + 10)
         self.assertEqual(strs_item["Item"][caching._STRING_SET_COL], {"w", "y"})
 
-
-@mock_dynamodb
+@mock_aws
 class TestCachingDictionary(DynamoBaseTest, unittest.TestCase):
     def test_new(self):
         self.assertEqual(caching.get_dictionary("dict"), dict())
@@ -321,8 +318,7 @@ class TestCachingDictionary(DynamoBaseTest, unittest.TestCase):
         self.assertLess(dict_item["Item"][caching._TTL_COL], int(datetime.datetime.now().timestamp()) + caching._EPOCH_SECONDS_DELTA_DEFAULT + 10)
         self.assertEqual(json.loads(dict_item["Item"][caching._DICT_COL]), {"w": "y"})
 
-
-@mock_dynamodb
+@mock_aws
 class TestUsingMonitoring(DynamoBaseTest, unittest.TestCase):
     def test_monitoring_does_not_explode(self) -> None:
         caching.monitoring.USE_MONITORING = True
