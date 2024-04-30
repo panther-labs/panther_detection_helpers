@@ -34,7 +34,7 @@ setup(
         'Topic :: Security',
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
-        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.11',
         'License :: OSI Approved :: GNU Affero General Public License v3',
     ],
 )

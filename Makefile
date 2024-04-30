@@ -37,4 +37,4 @@ publish: install package
 	pipenv run twine upload dist/*
 
 test:
-	pipenv run nosetests -v
+	pipenv run nose2 -v
