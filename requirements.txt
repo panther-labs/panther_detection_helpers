@@ -1,8 +1,8 @@
 -i https://pypi.org/simple
-botocore==1.36.19 ; python_version >= '3.8'
+botocore==1.36.19; python_version >= '3.8'
 certifi==2023.11.17
 chardet==4.0.0
-charset-normalizer==3.4.1 ; python_version >= '3.7'
+charset-normalizer==3.4.1; python_version >= '3.7'
 contextlib2==0.6.0.post1
 datadog==0.51.0
 decorator==5.1.1
@@ -11,7 +11,7 @@ jmespath==1.0.1
 jsonpath-ng==1.7.0
 ply==3.11
 python-dateutil==2.9.0.post0
-requests==2.32.3 ; python_version >= '3.8'
+requests==2.32.3; python_version >= '3.8'
 s3transfer==0.11.2
 six==1.17.0
 urllib3==2.3.0
