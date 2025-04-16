@@ -74,23 +74,38 @@ def get_counter(key: str, force_ttl_check: bool = False) -> int:
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.increment_counter")
-def increment_counter(key: str, val: int = 1, epoch_seconds: Optional[int] = None) -> int:
+def increment_counter(
+    key: str, val: int = 1, epoch_seconds: Optional[int] = _EPOCH_SECONDS_DELTA_DEFAULT
+) -> int:
     """Increment a counter in the table.
 
     Args:
         key: The name of the counter (need not exist yet)
         val: How much to add to the counter
         epoch_seconds: (Optional) How long until the counter expires in seconds. Default: 90 days from now
+                      If None, TTL will not be updated.
 
     Returns:
         The new value of the count
     """
+    if epoch_seconds is None:
+        update_expression = "ADD #col :incr"
+        expression_attribute_names = {"#col": _COUNT_COL}
+        expression_attribute_values = {":incr": val}
+    else:
+        update_expression = "ADD #col :incr SET #ttlcol = :time"
+        expression_attribute_names = {"#col": _COUNT_COL, "#ttlcol": _TTL_COL}
+        expression_attribute_values = {
+            ":incr": val,
+            ":time": _finalize_epoch_seconds(epoch_seconds),
+        }
+
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
-        UpdateExpression="ADD #col :incr SET #ttlcol = :time",
-        ExpressionAttributeNames={"#col": _COUNT_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={":incr": val, ":time": _finalize_epoch_seconds(epoch_seconds)},
+        UpdateExpression=update_expression,
+        ExpressionAttributeNames=expression_attribute_names,
+        ExpressionAttributeValues=expression_attribute_values,
     )
 
     # Numeric values are returned as decimal.Decimal
@@ -134,9 +149,9 @@ def _finalize_epoch_seconds(epoch_seconds: Optional[int]) -> int:
     if not isinstance(epoch_seconds, int):
         epoch_seconds = int(datetime.now().timestamp()) + _EPOCH_SECONDS_DELTA_DEFAULT
     # if we are given an epoch seconds that is less than
-    # 604800 ( aka seven days ), then add the epoch seconds to
+    # 1000000000, then add the epoch seconds to
     # the timestamp of now
-    if epoch_seconds < 604801:
+    if epoch_seconds < 1000000000:
         epoch_seconds = int(datetime.now().timestamp()) + epoch_seconds
     return epoch_seconds
 
@@ -254,7 +269,9 @@ def put_string_set(key: str, val: Set[str], epoch_seconds: Optional[int] = None)
 
 @monitoring.wrap(name="panther_detection_helpers.caching.add_to_string_set")
 def add_to_string_set(
-    key: str, val: Union[str, Sequence[str]], epoch_seconds: Optional[int] = None
+    key: str,
+    val: Union[str, Sequence[str]],
+    epoch_seconds: Optional[int] = _EPOCH_SECONDS_DELTA_DEFAULT,
 ) -> Set[str]:
     """Add one or more strings to a set.
 
@@ -262,6 +279,7 @@ def add_to_string_set(
         key: The name of the string set
         val: Either a single string or a list/tuple/set of strings to add
         epoch_seconds: (Optional) How long until the counter expires in seconds. Default: 90 days from now
+                      If None, TTL will not be updated.
 
     Returns:
         The new value of the string set
@@ -274,15 +292,24 @@ def add_to_string_set(
             # We can't add empty sets, just return the existing value instead
             return get_string_set(key)
 
+    if epoch_seconds is None:
+        update_expression = "ADD #col :ss"
+        expression_attribute_names = {"#col": _STRING_SET_COL}
+        expression_attribute_values: dict[str, Any] = {":ss": item_value}
+    else:
+        update_expression = "ADD #col :ss SET #ttlcol = :time"
+        expression_attribute_names = {"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL}
+        expression_attribute_values = {
+            ":ss": item_value,
+            ":time": _finalize_epoch_seconds(epoch_seconds),
+        }
+
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
-        UpdateExpression="ADD #col :ss SET #ttlcol = :time",
-        ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={
-            ":ss": item_value,
-            ":time": _finalize_epoch_seconds(epoch_seconds),
-        },
+        UpdateExpression=update_expression,
+        ExpressionAttributeNames=expression_attribute_names,
+        ExpressionAttributeValues=expression_attribute_values,
     )
 
     current_string_set = response["Attributes"].get(_STRING_SET_COL, None)
@@ -293,7 +320,9 @@ def add_to_string_set(
 
 @monitoring.wrap(name="panther_detection_helpers.caching.remove_from_string_set")
 def remove_from_string_set(
-    key: str, val: Union[str, Sequence[str]], epoch_seconds: Optional[int] = None
+    key: str,
+    val: Union[str, Sequence[str]],
+    epoch_seconds: Optional[int] = _EPOCH_SECONDS_DELTA_DEFAULT,
 ) -> Set[str]:
     """Remove one or more strings from a set.
 
@@ -301,6 +330,7 @@ def remove_from_string_set(
         key: The name of the string set
         val: Either a single string or a list/tuple/set of strings to remove
         epoch_seconds: (Optional) How long until the counter expires in seconds. Default: 90 days from now
+                      If None, TTL will not be updated.
 
     Returns:
         The new value of the string set
@@ -313,15 +343,24 @@ def remove_from_string_set(
             # We can't remove empty sets, just return the existing value instead
             return get_string_set(key)
 
+    if epoch_seconds is None:
+        update_expression = "DELETE #col :ss"
+        expression_attribute_names = {"#col": _STRING_SET_COL}
+        expression_attribute_values: dict[str, Any] = {":ss": item_value}
+    else:
+        update_expression = "DELETE #col :ss SET #ttlcol = :time"
+        expression_attribute_names = {"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL}
+        expression_attribute_values = {
+            ":ss": item_value,
+            ":time": _finalize_epoch_seconds(epoch_seconds),
+        }
+
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
-        UpdateExpression="DELETE #col :ss SET #ttlcol = :time",
-        ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
-        ExpressionAttributeValues={
-            ":ss": item_value,
-            ":time": _finalize_epoch_seconds(epoch_seconds),
-        },
+        UpdateExpression=update_expression,
+        ExpressionAttributeNames=expression_attribute_names,
+        ExpressionAttributeValues=expression_attribute_values,
     )
 
     return response["Attributes"][_STRING_SET_COL]
