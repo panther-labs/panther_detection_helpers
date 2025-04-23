@@ -88,17 +88,14 @@ def increment_counter(
     Returns:
         The new value of the count
     """
-    if epoch_seconds is None:
-        update_expression = "ADD #col :incr"
-        expression_attribute_names = {"#col": _COUNT_COL}
-        expression_attribute_values = {":incr": val}
-    else:
-        update_expression = "ADD #col :incr SET #ttlcol = :time"
-        expression_attribute_names = {"#col": _COUNT_COL, "#ttlcol": _TTL_COL}
-        expression_attribute_values = {
-            ":incr": val,
-            ":time": _finalize_epoch_seconds(epoch_seconds),
-        }
+    update_expression = "ADD #col :incr"
+    expression_attribute_names = {"#col": _COUNT_COL}
+    expression_attribute_values = {":incr": val}
+    
+    if epoch_seconds is not None:
+        update_expression += " SET #ttlcol = :time"
+        expression_attribute_names["#ttlcol"] =  _TTL_COL
+        expression_attribute_values[":time"] = _finalize_epoch_seconds(epoch_seconds)
 
     response = kv_table().update_item(
         Key={"key": key},
@@ -292,17 +289,14 @@ def add_to_string_set(
             # We can't add empty sets, just return the existing value instead
             return get_string_set(key)
 
-    if epoch_seconds is None:
-        update_expression = "ADD #col :ss"
-        expression_attribute_names = {"#col": _STRING_SET_COL}
-        expression_attribute_values: dict[str, Any] = {":ss": item_value}
-    else:
-        update_expression = "ADD #col :ss SET #ttlcol = :time"
-        expression_attribute_names = {"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL}
-        expression_attribute_values = {
-            ":ss": item_value,
-            ":time": _finalize_epoch_seconds(epoch_seconds),
-        }
+    update_expression = "ADD #col :ss"
+    expression_attribute_names = {"#col": _STRING_SET_COL}
+    expression_attribute_values: dict[str, Any] = {":ss": item_value}
+    
+    if epoch_seconds is not None:
+        update_expression += " SET #ttlcol = :time"
+        expression_attribute_names["#ttlcol"] =  _TTL_COL
+        expression_attribute_values[":time"] = _finalize_epoch_seconds(epoch_seconds)
 
     response = kv_table().update_item(
         Key={"key": key},
@@ -343,17 +337,14 @@ def remove_from_string_set(
             # We can't remove empty sets, just return the existing value instead
             return get_string_set(key)
 
-    if epoch_seconds is None:
-        update_expression = "DELETE #col :ss"
-        expression_attribute_names = {"#col": _STRING_SET_COL}
-        expression_attribute_values: dict[str, Any] = {":ss": item_value}
-    else:
-        update_expression = "DELETE #col :ss SET #ttlcol = :time"
-        expression_attribute_names = {"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL}
-        expression_attribute_values = {
-            ":ss": item_value,
-            ":time": _finalize_epoch_seconds(epoch_seconds),
-        }
+    update_expression = "DELETE #col :ss"
+    expression_attribute_names = {"#col": _STRING_SET_COL}
+    expression_attribute_values: dict[str, Any] = {":ss": item_value}
+    
+    if epoch_seconds is not None:
+        update_expression += " SET #ttlcol = :time"
+        expression_attribute_names["#ttlcol"] =  _TTL_COL
+        expression_attribute_values[":time"] = _finalize_epoch_seconds(epoch_seconds)
 
     response = kv_table().update_item(
         Key={"key": key},
