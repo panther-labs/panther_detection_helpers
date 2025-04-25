@@ -1,10 +1,11 @@
 import json
 import os
-import time
 from datetime import datetime
 from typing import Any, Mapping, Optional, Sequence, Set, Union
 
 import boto3
+from boto3.dynamodb.conditions import Attr
+from botocore.exceptions import ClientError
 
 from . import monitoring
 
@@ -34,7 +35,7 @@ def kv_table() -> boto3.resource:
         _KV_TABLE = boto3.resource(
             "dynamodb",
             endpoint_url="https://dynamodb" + FIPS_SUFFIX if FIPS_ENABLED else None,
-        ).Table("panther-kv-store")
+        ).Table(os.getenv("KV_STORE_TABLE_NAME", "panther-kv-store"))
     return _KV_TABLE
 
 
@@ -81,7 +82,7 @@ def increment_counter(
 
     Args:
         key: The name of the counter (need not exist yet)
-        val: How much to add to the counter
+        val (Optional): How much to add to the counter. Default: 1
         epoch_seconds: (Optional) How long until the counter expires in seconds. Default: 90 days from now
                       If None, TTL will not be updated.
 
@@ -97,6 +98,26 @@ def increment_counter(
         expression_attribute_names["#ttlcol"] = _TTL_COL
         expression_attribute_values[":time"] = _finalize_epoch_seconds(epoch_seconds)
 
+
+    try:
+        response = kv_table().update_item(
+            Key={"key": key},
+            ReturnValues="UPDATED_NEW",
+            UpdateExpression="ADD #col :incr SET #ttlcol = :time",
+            ExpressionAttributeNames={"#col": _COUNT_COL, "#ttlcol": _TTL_COL},
+            ExpressionAttributeValues={":incr": val, ":time": _finalize_epoch_seconds(epoch_seconds)},
+            ConditionExpression=Attr(_TTL_COL).gte(
+                _finalize_epoch_seconds(int(datetime.now().timestamp()))
+            ),
+        )
+        return response["Attributes"][_COUNT_COL].to_integral_value()
+    except ClientError as exception:
+        # Ignore the ConditionalCheckFailedException, bubble up
+        # other exceptions.
+        if exception.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
+
+    # If we got here, the conditional update failed and we know the key is expired
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
@@ -104,9 +125,7 @@ def increment_counter(
         ExpressionAttributeNames=expression_attribute_names,
         ExpressionAttributeValues=expression_attribute_values,
     )
-
-    # Numeric values are returned as decimal.Decimal
-    return response["Attributes"][_COUNT_COL].to_integral_value()
+    return val
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.reset_counter")
@@ -116,7 +135,11 @@ def reset_counter(key: str) -> None:
     Args:
         key: The name of the counter to reset
     """
-    kv_table().put_item(Item={"key": key, _COUNT_COL: 0})
+    kv_table().update_item(
+        Key={"key": key},
+        UpdateExpression="REMOVE #col",
+        ExpressionAttributeNames={"#col": _COUNT_COL},
+    )
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.set_key_expiration")
@@ -287,7 +310,7 @@ def add_to_string_set(
         item_value = set(val)
         if not item_value:
             # We can't add empty sets, just return the existing value instead
-            return get_string_set(key)
+            return get_string_set(key, force_ttl_check=True)
 
     update_expression = "ADD #col :ss"
     expression_attribute_names = {"#col": _STRING_SET_COL}
@@ -298,6 +321,28 @@ def add_to_string_set(
         expression_attribute_names["#ttlcol"] = _TTL_COL
         expression_attribute_values[":time"] = _finalize_epoch_seconds(epoch_seconds)
 
+    try:
+        response = kv_table().update_item(
+            Key={"key": key},
+            ReturnValues="UPDATED_NEW",
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=expression_attribute_names,
+            ExpressionAttributeValues=expression_attribute_values,
+            ConditionExpression=Attr(_TTL_COL).gte(
+                _finalize_epoch_seconds(int(datetime.now().timestamp()))
+            ),
+        )
+        current_string_set = response["Attributes"].get(_STRING_SET_COL, None)
+        if current_string_set is None:
+            current_string_set = get_string_set(key, force_ttl_check=True)
+        return current_string_set
+    except ClientError as exception:
+        # Ignore the ConditionalCheckFailedException, bubble up
+        # other exceptions.
+        if exception.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
+
+    # If we got here, the conditional update failed and we know the key is expired
     response = kv_table().update_item(
         Key={"key": key},
         ReturnValues="UPDATED_NEW",
@@ -308,7 +353,7 @@ def add_to_string_set(
 
     current_string_set = response["Attributes"].get(_STRING_SET_COL, None)
     if current_string_set is None:
-        current_string_set = get_string_set(key)
+        current_string_set = get_string_set(key, force_ttl_check=True)
     return current_string_set
 
 
@@ -335,7 +380,7 @@ def remove_from_string_set(
         item_value = set(val)
         if not item_value:
             # We can't remove empty sets, just return the existing value instead
-            return get_string_set(key)
+            return get_string_set(key, force_ttl_check=True)
 
     update_expression = "DELETE #col :ss"
     expression_attribute_names = {"#col": _STRING_SET_COL}
@@ -345,16 +390,31 @@ def remove_from_string_set(
         update_expression += " SET #ttlcol = :time"
         expression_attribute_names["#ttlcol"] = _TTL_COL
         expression_attribute_values[":time"] = _finalize_epoch_seconds(epoch_seconds)
+    
+    try:
+        response = kv_table().update_item(
+            Key={"key": key},
+            ReturnValues="UPDATED_NEW",
+            UpdateExpression="DELETE #col :ss SET #ttlcol = :time",
+            ExpressionAttributeNames={"#col": _STRING_SET_COL, "#ttlcol": _TTL_COL},
+            ExpressionAttributeValues={
+                ":ss": item_value,
+                ":time": _finalize_epoch_seconds(epoch_seconds),
+            },
+            ConditionExpression=Attr(_TTL_COL).gte(
+                _finalize_epoch_seconds(int(datetime.now().timestamp()))
+            ),
+        )
+        return response["Attributes"].get(_STRING_SET_COL, set())
+    except ClientError as exception:
+        # Ignore the ConditionalCheckFailedException, bubble up
+        # other exceptions.
+        if exception.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
 
-    response = kv_table().update_item(
-        Key={"key": key},
-        ReturnValues="UPDATED_NEW",
-        UpdateExpression=update_expression,
-        ExpressionAttributeNames=expression_attribute_names,
-        ExpressionAttributeValues=expression_attribute_values,
-    )
-
-    return response["Attributes"][_STRING_SET_COL]
+    # If we got here, the conditional update failed and we know the key is expired
+    reset_string_set(key)
+    return set()
 
 
 @monitoring.wrap(name="panther_detection_helpers.caching.reset_string_set")
@@ -377,16 +437,14 @@ def evaluate_threshold(key: str, threshold: int = 10, expiry_seconds: int = 3600
     Increment counter and check whether the count meets the threshold. If so, reset and alert.
     Args:
         key: The name to evaluate
-        threshold: The threshold to meet or exceed
-        expiry_seconds: How many seconds from now to expire
+        threshold: (Optional) The threshold to meet or exceed. Default: 10
+        expiry_seconds: (Optional) How many seconds from now to expire
 
     Returns: Whether we met the threshold
     """
-    hourly_error_count = increment_counter(key)
-    if hourly_error_count == 1:
-        set_key_expiration(key, int(time.time()) + expiry_seconds)
+    hourly_error_count = increment_counter(key, epoch_seconds=expiry_seconds)
     # If it exceeds our threshold, reset and then return an alert
-    elif hourly_error_count >= threshold:
+    if hourly_error_count >= threshold:
         reset_counter(key)
         return True
     return False
@@ -402,5 +460,5 @@ def check_account_age(key: Any) -> bool:
         key: The name to check
     """
     if isinstance(key, str) and key != "":
-        return bool(get_string_set(key))
+        return bool(get_string_set(key, force_ttl_check=True))
     return False

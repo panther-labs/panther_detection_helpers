@@ -1,18 +1,25 @@
 on:
   push:
-    branches-ignore:
-      - main
+    branches:
+      - main  # Splitting out main here ensures we do not redundantly run this workflow on merge from a PR
+  pull_request:
+    branches:
+      - '*' # Match all branches
+
+permissions:
+  contents: write
+  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3.1.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Setup Python
-        uses: actions/setup-python@v4.3.0
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
-          python-version: 3.9.13
+          python-version: 3.11
       - name: Install pipenv
         run: make install-pipenv
       - name: Install dependencies
@@ -26,13 +33,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3.1.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           token: ${{ secrets.PANTHER_BOT_AUTOMATION_TOKEN }}
+      - uses: chainguard-dev/actions/setup-gitsign@e82b4e5ae10182af72972addcb3fedf7454621c8
       - name: Setup Python
-        uses: actions/setup-python@v4.3.0
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
-          python-version: 3.9.15
+          python-version: 3.11
       - name: Install pipenv
         run: make install-pipenv
       - name: Install
@@ -43,6 +51,14 @@ jobs:
         run: |
           git config --global user.email "github-service-account-automation@panther.io"
           git config --global user.name "panther-bot-automation"
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BRANCH=${{ github.head_ref }}
+            git fetch; git checkout ${{ github.head_ref }}
+          else
+            BRANCH=${{ github.ref }}
+          fi
+
           
           git add -A .
 
@@ -52,5 +68,6 @@ jobs:
             echo "No auto-formatting needed"
           else
             echo "Committing auto-formatted files"
-            git push origin HEAD:${{ github.ref }}
+            git push origin HEAD:$BRANCH
+            gitsign verify $(git rev-parse HEAD) --certificate-identity-regexp="https://github.com/${{ github.repository }}/*" --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
           fi

@@ -1,17 +1,17 @@
 -i https://pypi.org/simple
-botocore==1.31.54; python_version >= '3.7'
-certifi==2021.10.8
+botocore==1.36.19; python_version >= '3.8'
+certifi==2023.11.17
 chardet==4.0.0
-charset-normalizer==3.2.0; python_full_version >= '3.7.0'
+charset-normalizer==3.4.1; python_version >= '3.7'
 contextlib2==0.6.0.post1
-datadog==0.47.0
+datadog==0.51.0
 decorator==5.1.1
-idna==3.3
-jmespath==1.0.0
-jsonpath-ng==1.5.3
+idna==3.10
+jmespath==1.0.1
+jsonpath-ng==1.7.0
 ply==3.11
-python-dateutil==2.8.2
-requests==2.31.0; python_version >= '3.7'
-s3transfer==0.5.2
-six==1.16.0
-urllib3==1.26.9
+python-dateutil==2.9.0.post0
+requests==2.32.3; python_version >= '3.8'
+s3transfer==0.11.2
+six==1.17.0
+urllib3==2.3.0
