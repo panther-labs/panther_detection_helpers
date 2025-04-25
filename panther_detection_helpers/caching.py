@@ -98,14 +98,16 @@ def increment_counter(
         expression_attribute_names["#ttlcol"] = _TTL_COL
         expression_attribute_values[":time"] = _finalize_epoch_seconds(epoch_seconds)
 
-
     try:
         response = kv_table().update_item(
             Key={"key": key},
             ReturnValues="UPDATED_NEW",
             UpdateExpression="ADD #col :incr SET #ttlcol = :time",
             ExpressionAttributeNames={"#col": _COUNT_COL, "#ttlcol": _TTL_COL},
-            ExpressionAttributeValues={":incr": val, ":time": _finalize_epoch_seconds(epoch_seconds)},
+            ExpressionAttributeValues={
+                ":incr": val,
+                ":time": _finalize_epoch_seconds(epoch_seconds),
+            },
             ConditionExpression=Attr(_TTL_COL).gte(
                 _finalize_epoch_seconds(int(datetime.now().timestamp()))
             ),
@@ -390,7 +392,7 @@ def remove_from_string_set(
         update_expression += " SET #ttlcol = :time"
         expression_attribute_names["#ttlcol"] = _TTL_COL
         expression_attribute_values[":time"] = _finalize_epoch_seconds(epoch_seconds)
-    
+
     try:
         response = kv_table().update_item(
             Key={"key": key},
