@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import unittest
+from unittest.mock import patch, MagicMock
 from abc import ABC
 
 import boto3
@@ -278,6 +279,42 @@ class TestCachingStringSet(DynamoBaseTest, unittest.TestCase):
         self.assertGreater(strs_item["Item"][caching._TTL_COL], int(datetime.datetime.now().timestamp()) + caching._EPOCH_SECONDS_DELTA_DEFAULT - 10)
         self.assertLess(strs_item["Item"][caching._TTL_COL], int(datetime.datetime.now().timestamp()) + caching._EPOCH_SECONDS_DELTA_DEFAULT + 10)
         self.assertEqual(strs_item["Item"][caching._STRING_SET_COL], {"w", "y"})
+
+    def test_add_string_set_with_none_ttl_update_expression(self):
+        """Test that when epoch_seconds is None, the update expression doesn't modify TTL."""
+        
+        # Create a mock for the DynamoDB table
+        mock_table = MagicMock()
+        mock_table.update_item.return_value = {"Attributes": {caching._STRING_SET_COL: {"test"}}}
+        
+        # Patch the kv_table method to return our mock
+        with patch.object(caching, 'kv_table', return_value=mock_table):
+            # Call add_to_string_set with epoch_seconds=None
+            caching.add_to_string_set("test-key", "test-value", epoch_seconds=None)
+            
+            # Get the call arguments
+            call_args = mock_table.update_item.call_args[1]
+            
+            # Verify update expression doesn't include TTL updates
+            self.assertEqual(call_args["UpdateExpression"], "ADD #col :ss")
+            self.assertEqual(list(call_args["ExpressionAttributeNames"].keys()), ["#col"])
+            self.assertEqual(list(call_args["ExpressionAttributeValues"].keys()), [":ss"])
+            self.assertNotIn("#ttlcol", call_args["ExpressionAttributeNames"])
+            self.assertNotIn(":time", call_args["ExpressionAttributeValues"])
+            
+            # Reset the mock for the next test
+            mock_table.reset_mock()
+            
+            # Call add_to_string_set with epoch_seconds set to a value
+            caching.add_to_string_set("test-key", "test-value", epoch_seconds=3600)
+            
+            # Get the call arguments
+            call_args = mock_table.update_item.call_args[1]
+            
+            # Verify update expression includes TTL updates
+            self.assertEqual(call_args["UpdateExpression"], "ADD #col :ss SET #ttlcol = :time")
+            self.assertIn("#ttlcol", call_args["ExpressionAttributeNames"])
+            self.assertIn(":time", call_args["ExpressionAttributeValues"])
 
 @mock_aws
 class TestCachingDictionary(DynamoBaseTest, unittest.TestCase):
