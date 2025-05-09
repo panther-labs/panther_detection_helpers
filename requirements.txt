@@ -1,6 +1,6 @@
 -i https://pypi.org/simple
 botocore==1.36.19; python_version >= '3.8'
-certifi==2023.11.17
+certifi==2024.7.4; python_version >= '3.6'
 chardet==4.0.0
 charset-normalizer==3.4.1; python_version >= '3.7'
 contextlib2==0.6.0.post1
