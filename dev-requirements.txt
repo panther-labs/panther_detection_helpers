@@ -80,7 +80,7 @@ rfc3986==2.0.0; python_version >= '3.7'
 rich==13.9.4; python_full_version >= '3.8.0'
 rpds-py==0.22.3; python_version >= '3.9'
 s3transfer==0.11.2
-setuptools==75.8.0
+setuptools==78.1.1
 six==1.17.0
 stevedore==5.4.0; python_version >= '3.9'
 sympy==1.13.3; python_version >= '3.8'
