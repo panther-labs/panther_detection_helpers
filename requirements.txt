@@ -11,7 +11,7 @@ jmespath==1.0.1
 jsonpath-ng==1.7.0
 ply==3.11
 python-dateutil==2.9.0.post0
-requests==2.32.3; python_version >= '3.8'
+requests==2.32.4; python_version >= '3.8'
 s3transfer==0.11.2
 six==1.17.0
 urllib3==2.3.0
