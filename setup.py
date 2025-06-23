@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 
-VERSION = "0.5.0"
+VERSION = "1.0.0"
 
 
 install_requires = [
@@ -22,7 +22,7 @@ setup(
     packages=['panther_detection_helpers'],
     package_dir={},
     version=VERSION,
-    license='AGPL-3.0',
+    license='Apache-2.0',
     description='Panther Detection Helpers Library',
     author='Panther Labs Inc',
     author_email='pypi@runpanther.io',
@@ -35,6 +35,6 @@ setup(
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Programming Language :: Python :: 3.11',
-        'License :: OSI Approved :: GNU Affero General Public License v3',
+        'License :: OSI Approved :: Apache Software License',
     ],
 )
