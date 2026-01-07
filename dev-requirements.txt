@@ -87,7 +87,7 @@ sympy==1.13.3; python_version >= '3.8'
 tomlkit==0.13.2; python_version >= '3.8'
 twine==6.1.0
 typing-extensions==4.12.2; python_version >= '3.8'
-urllib3==2.3.0
+urllib3==2.5.0
 werkzeug==3.1.4; python_version >= '3.9'
 wrapt==1.17.2; python_version >= '3.8'
 xmltodict==0.14.2; python_version >= '3.6'
