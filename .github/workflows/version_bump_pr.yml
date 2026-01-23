@@ -1,5 +1,9 @@
 name: Version Bump PR
 
+permissions:
+  contents: write
+  pull-requests: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -11,12 +15,15 @@ on:
 jobs:
   version_bump_pr:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.PANTHER_BOT_AUTOMATION_TOKEN }}
 
     steps:
       - name: Check out the repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
+          token: ${{ env.GITHUB_TOKEN || github.token }}
 
       - name: Bump version
         id: bump_version
