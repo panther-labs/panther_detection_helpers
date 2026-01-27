@@ -1,17 +1,23 @@
 name: Build, Test, Publish Github and PyPI Releases
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
 
 jobs:
   publish_github_release_and_pypi:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.PANTHER_BOT_AUTOMATION_TOKEN }}
 
     steps:
       - name: Check out the repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
+          token: ${{ env.GITHUB_TOKEN || github.token }}
 
       - name: Set up Python
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
@@ -31,11 +37,11 @@ jobs:
       - name: Create Github Release
         run: |
           export NEW_VERSION=$(cat VERSION)
-          git config user.name "dac-bot"
-          git config user.email "dac-bot@panther.com"
+          git config user.name "panther-bot-automation"
+          git config user.email "github-service-account-automation@panther.io"
           gh release create v$NEW_VERSION dist/* -t v$NEW_VERSION --draft
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PANTHER_BOT_AUTOMATION_TOKEN }}
 
       - name: Publish to PyPI
         run: |
