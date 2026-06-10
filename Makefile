@@ -25,6 +25,9 @@ install:
 install-pipenv:
 	pip install pipenv
 
+install-no-reqs:
+	pipenv install --dev
+
 package-clean:
 	rm -rf dist
 	rm -f MANIFEST
