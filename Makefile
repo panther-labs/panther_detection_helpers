@@ -26,7 +26,7 @@ install-pipenv:
 	pip install pipenv
 
 install-no-reqs:
-	pipenv install --dev
+	pipenv sync --dev
 
 package-clean:
 	rm -rf dist
