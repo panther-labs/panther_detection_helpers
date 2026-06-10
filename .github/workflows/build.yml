@@ -51,7 +51,7 @@ jobs:
       - name: Install pipenv
         run: make install-pipenv
       - name: Install
-        run: make install
+        run: make install-no-reqs
       - name: Format
         run: make fmt
       - name: Commit formatting
