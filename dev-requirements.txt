@@ -64,7 +64,7 @@ pycparser==2.22; python_version >= '3.8'
 pydantic==2.10.6; python_version >= '3.8'
 pydantic-core==2.27.2; python_version >= '3.8'
 pyfakefs==5.7.4
-pygments==2.19.1; python_version >= '3.8'
+pygments==2.20.0; python_version >= '3.8'
 pylint==3.3.4
 pyparsing==3.2.1
 python-dateutil==2.9.0.post0
