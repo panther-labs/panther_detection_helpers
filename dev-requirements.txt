@@ -45,7 +45,7 @@ mdurl==0.1.2; python_version >= '3.7'
 more-itertools==10.6.0; python_version >= '3.9'
 moto[all]==5.0.28; python_version >= '3.8'
 mpmath==1.3.0
-multipart==1.2.1
+multipart==1.2.2
 mypy==1.15.0
 mypy-extensions==1.1.0; python_version >= '3.8'
 networkx==3.4.2; python_version >= '3.10'
