@@ -5,7 +5,7 @@ verify_ssl = true
 
 [dev-packages]
 bandit = ">=1.7.4,<2.0"
-black = "==24.3.0"
+black = "==26.3.1"
 isort = ">=5.10"
 "moto[all]" = ">=5.0.5"
 mypy = ">=0.991"
@@ -20,14 +20,14 @@ certifi = ">=2023.7.22,<2025.0.0"
 chardet = ">=4.0.0,<5.0.0"
 contextlib2 = "==0.6.0.post1"
 decorator = ">=5.1.1,<6.0.0"
-idna = ">=3.3,<4.0"
+idna = ">=3.15,<4.0"
 jmespath = ">=1.0.0,<2.0.0"
 jsonpath-ng = ">=1.5.3,<2.0.0"
 ply = ">=3.11,<4.0"
 python-dateutil = ">=2.8.2,<3.0.0"
 s3transfer = ">=0.5.2,<1.0.0"
 six = ">=1.16.0,<2.0.0"
-urllib3 = ">=2.6.3,<3.0.0"
+urllib3 = ">=2.7.0,<3.0.0"
 datadog = ">=0.47.0,<1.0.0"
 
 [requires]
