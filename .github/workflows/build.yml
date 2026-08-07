@@ -7,8 +7,7 @@ on:
       - '*' # Match all branches
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   build:
@@ -16,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
       - name: Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
@@ -32,6 +33,8 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     if: github.actor != 'dependabot[bot]'
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -55,18 +58,22 @@ jobs:
       - name: Format
         run: make fmt
       - name: Commit formatting
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          REF: ${{ github.ref }}
         run: |
           git config --global user.email "github-service-account-automation@panther.io"
           git config --global user.name "panther-bot-automation"
 
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            BRANCH=${{ github.head_ref }}
-            git fetch; git checkout ${{ github.head_ref }}
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            BRANCH="$HEAD_REF"
+            git fetch; git checkout "$HEAD_REF"
           else
-            BRANCH=${{ github.ref }}
+            BRANCH="$REF"
           fi
 
-          
+
           git add -A .
 
           REQUIRES_COMMIT=1
@@ -75,5 +82,5 @@ jobs:
             echo "No auto-formatting needed"
           else
             echo "Committing auto-formatted files"
-            git push origin HEAD:$BRANCH
+            git push origin "HEAD:$BRANCH"
           fi
