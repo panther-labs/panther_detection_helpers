@@ -1,20 +1,27 @@
 name: Version Bump PR
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 on:
   workflow_dispatch:
     inputs:
       bump_type:
-        description: 'Version Bump Type (major, minor, patch)'
+        description: 'Version Bump Type'
         required: true
         default: 'minor'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
 
 jobs:
   version_bump_pr:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     env:
       GITHUB_TOKEN: ${{ secrets.PANTHER_BOT_AUTOMATION_TOKEN }}
 
@@ -27,9 +34,11 @@ jobs:
 
       - name: Bump version
         id: bump_version
+        env:
+          BUMP_TYPE_INPUT: ${{ github.event.inputs.bump_type || 'patch' }}
         run: |
-          BUMP_TYPE="${{ github.event.inputs.bump_type || 'patch' }}"
-          
+          BUMP_TYPE="$BUMP_TYPE_INPUT"
+
           case "$BUMP_TYPE" in
             major)
               NEW_VERSION=$(cat VERSION | awk -F. '{printf "%d.0.0", $1+1}')
@@ -60,7 +69,7 @@ jobs:
 
       - name: Create Branch and Pull Request
         run: |
-          NEW_VERSION="${{ steps.bump_version.outputs.new_version }}"
+          NEW_VERSION="$NEW_VERSION_INPUT"
           git config user.name "panther-bot-automation"
           git config user.email "github-service-account-automation@panther.io"
           git checkout -b "$NEW_VERSION"
@@ -69,3 +78,4 @@ jobs:
           gh pr create -t "Version bump to v$NEW_VERSION" -b "Bumping Version to v$NEW_VERSION ahead of release."
         env:
           GH_TOKEN: ${{ secrets.PANTHER_BOT_AUTOMATION_TOKEN }}
+          NEW_VERSION_INPUT: ${{ steps.bump_version.outputs.new_version }}
