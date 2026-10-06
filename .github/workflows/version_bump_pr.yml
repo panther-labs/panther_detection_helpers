@@ -22,15 +22,19 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    env:
-      GITHUB_TOKEN: ${{ secrets.PANTHER_BOT_AUTOMATION_TOKEN }}
 
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.PANTHER_BOT_APP_ID }}
+          private-key: ${{ secrets.PANTHER_BOT_APP_PRIVATE_KEY }}
       - name: Check out the repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           fetch-depth: 0
-          token: ${{ env.GITHUB_TOKEN || github.token }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Bump version
         id: bump_version
@@ -77,5 +81,5 @@ jobs:
           git push --set-upstream origin "$NEW_VERSION"
           gh pr create -t "Version bump to v$NEW_VERSION" -b "Bumping Version to v$NEW_VERSION ahead of release."
         env:
-          GH_TOKEN: ${{ secrets.PANTHER_BOT_AUTOMATION_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           NEW_VERSION_INPUT: ${{ steps.bump_version.outputs.new_version }}
