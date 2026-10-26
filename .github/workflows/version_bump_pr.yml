@@ -20,16 +20,20 @@ jobs:
   version_bump_pr:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      id-token: write
 
     steps:
-      - name: Generate GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      - name: Bootstrap checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          app-id: ${{ secrets.PANTHER_BOT_APP_ID }}
-          private-key: ${{ secrets.PANTHER_BOT_APP_PRIVATE_KEY }}
+          persist-credentials: false
+      - name: Generate GitHub automation token
+        id: app-token
+        uses: ./.github/actions/github-automation-token
+        with:
+          broker_url: ${{ secrets.PANTHER_GITHUB_TOKEN_BROKER_URL }}
+          permissions: '{"contents":"write","pull_requests":"write"}'
       - name: Check out the repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
