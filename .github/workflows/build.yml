@@ -35,35 +35,11 @@ jobs:
     if: github.actor != 'dependabot[bot]'
     permissions:
       contents: read
-      id-token: write
-    defaults:
-      run:
-        working-directory: repo
     steps:
-      - name: Bootstrap checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          path: bootstrap
-          persist-credentials: false
-      - name: Generate GitHub automation token
-        id: app-token
-        uses: ./bootstrap/.github/actions/github-automation-token
-        with:
-          token_url: ${{ secrets.APP_TOKEN_SERVICE_URL }}
-          permissions: '{"contents":"write"}'
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          path: repo
-          token: ${{ steps.app-token.outputs.token }}
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd
-        with:
-          gpg_private_key: ${{ secrets.PANTHER_BOT_GPG_PRIVATE_KEY }}
-          passphrase:  ${{ secrets.PANTHER_BOT_GPG_PRIVATE_KEY_PASSPHRASE }}
-          git_user_signingkey: true
-          git_commit_gpgsign: true
-          workdir: repo
+          persist-credentials: false
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
@@ -74,30 +50,9 @@ jobs:
         run: make install-no-reqs
       - name: Format
         run: make fmt
-      - name: Commit formatting
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          HEAD_REF: ${{ github.head_ref }}
-          REF: ${{ github.ref }}
+      - name: Check formatting
         run: |
-          git config --global user.email "github-service-account-automation@panther.io"
-          git config --global user.name "panther-bot-automation"
-
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            BRANCH="$HEAD_REF"
-            git fetch; git checkout "$HEAD_REF"
-          else
-            BRANCH="$REF"
-          fi
-
-
-          git add -A .
-
-          REQUIRES_COMMIT=1
-          git commit -S -m "Auto-format files" || REQUIRES_COMMIT=0
-          if [[ $REQUIRES_COMMIT -eq 0 ]]; then
-            echo "No auto-formatting needed"
-          else
-            echo "Committing auto-formatted files"
-            git push origin "HEAD:$BRANCH"
+          if ! git diff --exit-code; then
+            echo "::error::Files are not formatted. Run 'make fmt' locally and commit the result."
+            exit 1
           fi
